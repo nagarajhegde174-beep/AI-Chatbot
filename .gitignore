@@ -29,7 +29,7 @@ pnpm-debug.log*
 # See docs/RULES.md section 6.
 .env
 .env.*
-!.env.example
+
 *.pem
 *.key
 *.p12
