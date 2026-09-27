@@ -1,0 +1,19 @@
+# Keep the frontend build context minimal and reproducible.
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+.vscode/*
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

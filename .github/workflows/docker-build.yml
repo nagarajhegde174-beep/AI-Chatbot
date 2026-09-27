@@ -1,0 +1,128 @@
+# Docker build
+#
+# Builds one image per service, each from ITS OWN directory. That is the point:
+# `docker build backend/chat-service` physically cannot compile user-service,
+# because the sibling services are not in the build context.
+#
+# This workflow does not test. Backend CI is the test gate, and it must be green
+# before an image is published. Docker builds run on main pushes and on tags.
+#
+# See docs/ARCHITECTURE.md section 12.
+
+name: Docker Build
+
+on:
+  push:
+    branches: [main, foundation]
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'infrastructure/**'
+      - '.github/workflows/docker-build.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Build every service so one failure does not hide the state of the others.
+      fail-fast: false
+      matrix:
+        include:
+          - service: api-gateway
+            context: ./backend/api-gateway
+            image: nexaai/api-gateway
+          - service: auth-service
+            context: ./backend/auth-service
+            image: nexaai/auth-service
+          - service: user-service
+            context: ./backend/user-service
+            image: nexaai/user-service
+          - service: chat-service
+            context: ./backend/chat-service
+            image: nexaai/chat-service
+          - service: ai-service
+            context: ./backend/ai-service
+            image: nexaai/ai-service
+          - service: document-service
+            context: ./backend/document-service
+            image: nexaai/document-service
+          - service: rag-service
+            context: ./backend/rag-service
+            image: nexaai/rag-service
+          - service: subscription-service
+            context: ./backend/subscription-service
+            image: nexaai/subscription-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        # Only needed to push. A pull request from a fork must never publish.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Report image size
+        if: always()
+        run: |
+          echo "### ${{ matrix.service }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Context: \`${{ matrix.context }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Tags: \`${{ steps.meta.outputs.tags }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  frontend:
+    name: build frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend/nexa-ai-web
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: nexaai/nexa-ai-web:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend

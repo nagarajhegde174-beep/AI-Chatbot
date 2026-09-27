@@ -1,0 +1,8 @@
+// Application entry stylesheet.
+//
+// Compile order matters: the token custom properties, then the Bootstrap override layer,
+// then application-level rules. Tailwind is prohibited, see docs/RULES.md section 5.
+
+@use 'tokens';
+@use 'theme';
+@use 'app';

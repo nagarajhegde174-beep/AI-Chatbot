@@ -1,0 +1,13 @@
+# Keep the build context to this service's own sources and Maven descriptor.
+# A Docker build can therefore never pick up a sibling service.
+target/
+.mvn/
+mvnw
+mvnw.cmd
+*.iml
+.idea/
+.vscode/
+.git/
+.gitignore
+README.md
+*.log

@@ -1,0 +1,90 @@
+# =====================================================================
+# NexaAI
+# =====================================================================
+
+# ---------------------------------------------------------------- build ----
+# Maven
+target/
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/tap/
+mvnw
+mvnw.cmd
+
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ------------------------------------------------------------- secrets ----
+# The single most important entry in this file. Real values must never be
+# committed; only .env.example placeholders belong in the repository.
+# See docs/RULES.md section 6.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets/
+secrets.*
+id_rsa
+id_ed25519
+
+# --------------------------------------------------------------- local ----
+# Local infrastructure state
+infrastructure/.env
+postgres-data/
+kafka-data/
+redis-data/
+*.log
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+!.vscode/extensions.json
+.settings/
+.project
+.classpath
+.factorypath
+nbproject/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS
+*.exe
+*.dll
+*.so
+*.dylib
+
+# ---------------------------------------------------------------- docs ----
+# Generated API documentation
+site/
+apidocs/
+**/target/site/
+**/target/jacoco/
+
+# ----------------------------------------------------------- OS / editors --
+*.code-workspace
+*.swp
+
+
+
+## docs ----------
+docs/

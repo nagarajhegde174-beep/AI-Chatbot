@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: document-service
+
+server:
+  port: ${SERVER_PORT:8085}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+logging:
+  level:
+    root: INFO
+    com.nexaai: INFO
+
+# ---------------------------------------------------------------------------
+# Phase 0 note: no datasource is configured on purpose. Persistence, Flyway
+# migrations and the JPA model for nexa_document land in a later phase, together with
+# the entity classes that only this service may map.
+# All secrets arrive through environment variables. Never commit real values.
+# ---------------------------------------------------------------------------

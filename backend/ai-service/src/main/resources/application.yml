@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: ai-service
+
+server:
+  port: ${SERVER_PORT:8084}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+logging:
+  level:
+    root: INFO
+    com.nexaai: INFO
+
+# ---------------------------------------------------------------------------
+# Phase 0 note: this service has no datasource and never will. Provider keys
+# (OPENAI_API_KEY, GEMINI_API_KEY, GROQ_API_KEY) are injected as environment
+# variables by the deploy pipeline and are never committed.
+# ---------------------------------------------------------------------------
