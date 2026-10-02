@@ -1,0 +1,109 @@
+// =====================================================================
+// Themes: light, dark and system.
+//
+// `data-bs-theme` on <html> is the single switch (docs/DESIGN.md section 3.3).
+// With the attribute absent, Bootstrap follows the OS via prefers-color-scheme.
+//
+// Each block below defines one token set and then remaps Bootstrap's own
+// variables onto it. Components therefore use `btn-primary`, `alert-danger`,
+// `text-body-secondary` and follow the theme without a single component-level
+// override.
+// =====================================================================
+
+@use 'tokens' as t;
+
+// --- light ------------------------------------------------------------------
+:root,
+[data-bs-theme='light'] {
+  color-scheme: light;
+
+  --nexa-bg: #f7f7fb;
+  --nexa-surface: #ffffff;
+  --nexa-surface-raised: #ffffff;
+  --nexa-surface-sunken: #ececf4;
+  --nexa-border: #dcdce6;
+  --nexa-text: #14142b;
+  --nexa-muted: #5c5c78;
+  --nexa-accent: hsl(#{t.$nexa-accent-h}, #{t.$nexa-accent-s}, 55%);
+  --nexa-accent-contrast: #ffffff;
+  --nexa-success: #0f7b4f;
+  --nexa-warning: #9a6700;
+  --nexa-danger: #b3261e;
+  --nexa-shadow-color: 18 18 43;
+
+  // Remap Bootstrap onto the tokens above.
+  --bs-body-bg: var(--nexa-bg);
+  --bs-body-color: var(--nexa-text);
+  --bs-border-color: var(--nexa-border);
+  --bs-secondary-color: var(--nexa-muted);
+  --bs-link-color: var(--nexa-accent);
+  --bs-link-hover-color: var(--nexa-accent);
+  --bs-primary: var(--nexa-accent);
+  --bs-success: var(--nexa-success);
+  --bs-warning: var(--nexa-warning);
+  --bs-danger: var(--nexa-danger);
+  --bs-light: var(--nexa-surface);
+  --bs-dark: var(--nexa-text);
+  --bs-body-font-family: #{t.$nexa-font-sans};
+  --bs-body-font-size: #{t.$nexa-font-size-base};
+  --bs-body-line-height: #{t.$nexa-line-height};
+  --bs-border-radius: #{t.$nexa-radius-md};
+}
+
+// --- dark -------------------------------------------------------------------
+// A real theme, not an inversion. Surfaces get lighter with elevation rather
+// than darker, which is what a dark UI actually needs to stay readable.
+[data-bs-theme='dark'] {
+  color-scheme: dark;
+
+  --nexa-bg: #0d0d18;
+  --nexa-surface: #16162a;
+  --nexa-surface-raised: #1e1e36;
+  --nexa-surface-sunken: #101020;
+  --nexa-border: #2e2e4d;
+  --nexa-text: #ececf7;
+  --nexa-muted: #a0a0c0;
+  --nexa-accent: hsl(#{t.$nexa-accent-h}, #{t.$nexa-accent-s}, 72%);
+  --nexa-accent-contrast: #0d0d18;
+  --nexa-success: #4ade80;
+  --nexa-warning: #fbbf24;
+  --nexa-danger: #f87171;
+  --nexa-shadow-color: 0 0 0;
+
+  --bs-body-bg: var(--nexa-bg);
+  --bs-body-color: var(--nexa-text);
+  --bs-border-color: var(--nexa-border);
+  --bs-secondary-color: var(--nexa-muted);
+  --bs-link-color: var(--nexa-accent);
+  --bs-link-hover-color: var(--nexa-accent);
+  --bs-primary: var(--nexa-accent);
+  --bs-success: var(--nexa-success);
+  --bs-warning: var(--nexa-warning);
+  --bs-danger: var(--nexa-danger);
+  --bs-light: var(--nexa-surface);
+  --bs-dark: var(--nexa-text);
+}
+
+// --- system -----------------------------------------------------------------
+// With no data-bs-theme attribute, follow the operating system. Bootstrap
+// applies a `dark` class/attribute automatically in this case; the variables
+// above are inherited either way because :root already declares the light set.
+@media (prefers-color-scheme: dark) {
+  :root:not([data-bs-theme='light']) {
+    color-scheme: dark;
+
+    --nexa-bg: #0d0d18;
+    --nexa-surface: #16162a;
+    --nexa-surface-raised: #1e1e36;
+    --nexa-surface-sunken: #101020;
+    --nexa-border: #2e2e4d;
+    --nexa-text: #ececf7;
+    --nexa-muted: #a0a0c0;
+    --nexa-accent: hsl(#{t.$nexa-accent-h}, #{t.$nexa-accent-s}, 72%);
+    --nexa-accent-contrast: #0d0d18;
+    --nexa-success: #4ade80;
+    --nexa-warning: #fbbf24;
+    --nexa-danger: #f87171;
+    --nexa-shadow-color: 0 0 0;
+  }
+}

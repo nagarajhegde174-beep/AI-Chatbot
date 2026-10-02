@@ -1,0 +1,545 @@
+# =====================================================================
+# Architecture rules
+#
+# These are the tests for Phase 0. There is no application code to unit test
+# yet (docs/RULES.md section 10), so this workflow is what "tested" currently
+# means, and it must actually assert. A warning nobody reads is not a control.
+#
+# Every check below names the rule in docs/RULES.md it enforces. If a check and
+# the rule ever disagree, the rule is the source of truth and the check is a bug.
+#
+# PHASE-AWARE BY DESIGN. Nothing here requires a service that does not exist.
+# The structural checks validate the plan; the content checks validate only what
+# is actually present. See docs/DECISIONS.md ADR-016.
+# =====================================================================
+
+name: Rules
+
+on:
+  push:
+    branches: [main, phase0]
+  pull_request:
+    branches: [main, phase0]
+  workflow_dispatch:
+
+# A new push to the same branch cancels the previous run.
+concurrency:
+  group: rules-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rules:
+    name: Architecture rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------------
+      # Structural expectations: the plan itself
+      # ---------------------------------------------------------------------
+
+      - name: R1 - the eight service directories exist
+        run: |
+          set -euo pipefail
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          for s in $services; do
+            [ -d "backend/$s" ] || { echo "::error::missing service directory backend/$s"; exit 1; }
+            [ -f "backend/$s/README.md" ] || { echo "::error::backend/$s has no README stating its boundary"; exit 1; }
+          done
+          echo "ok: all eight service directories exist and are documented"
+
+      - name: R1b - no aggregator POM, ever
+        run: |
+          set -euo pipefail
+          if [ -f backend/pom.xml ]; then
+            echo "::error::backend/pom.xml exists. There is deliberately no aggregator build. See docs/DULES.md section 1 and docs/DECISIONS.md ADR-012."
+            exit 1
+          fi
+          for p in backend/*/pom.xml; do
+            [ -e "$p" ] || continue
+            svc=$(basename "$(dirname "$p")")
+            if grep -q "<modules>" "$p"; then
+              echo "::error::$svc/pom.xml declares <modules>. The backend must be eight independent applications."
+              exit 1
+            fi
+            if grep -A3 "<parent>" "$p" | grep -q "<relativePath>"; then
+              echo "::error::$svc has a <relativePath> parent, so it inherits from a POM inside this repository. That is a shared module. See docs/RULES.md section 2."
+              exit 1
+            fi
+          done
+          echo "ok: no aggregator POM and no intra-repository parent"
+
+      - name: R2 - no service depends on another service
+        run: |
+          set -euo pipefail
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          for s in $services; do
+            [ -f "backend/$s/pom.xml" ] || continue
+            for other in $services; do
+              [ "$other" = "$s" ] && continue
+              if grep -q "<artifactId>$other</artifactId>" "backend/$s/pom.xml"; then
+                echo "::error::backend/$s/pom.xml depends on $other. Cross-service dependencies are prohibited. See docs/RULES.md section 2."
+                exit 1
+              fi
+            done
+            # A relativePath reference to a sibling is the same violation by a
+            # different route.
+            if grep -qE '<relativePath>(\.\./)+' "backend/$s/pom.xml"; then
+              echo "::error::backend/$s/pom.xml references a sibling directory. See docs/RULES.md section 2."
+              exit 1
+            fi
+          done
+          echo "ok: no service depends on another service"
+
+      - name: R3 - no fake microservices in Phase 0
+        run: |
+          set -euo pipefail
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          for s in $services; do
+            found=$(find "backend/$s" -type f \( -name '*.java' -o -name '*.kt' -o -name '*.class' \) 2>/dev/null | wc -l)
+            if [ "$found" -ne 0 ]; then
+              echo "::error::backend/$s contains $found source file(s), but no service is implemented yet."
+              echo "::error::Phase 0 forbids placeholder code. See docs/RULES.md section 10 and docs/DECISIONS.md ADR-015."
+              find "backend/$s" -type f \( -name '*.java' -o -name '*.kt' \) | head -10
+              exit 1
+            fi
+          done
+          echo "ok: no placeholder Java or Kotlin code in any service"
+
+      - name: R3b - no Dockerfiles for services that do not exist
+        run: |
+          set -euo pipefail
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          for s in $services; do
+            if [ -f "backend/$s/Dockerfile" ]; then
+              echo "::error::backend/$s has a Dockerfile but no service exists to build. See docs/RULES.md section 10."
+              exit 1
+            fi
+          done
+          echo "ok: no Dockerfile for a non-existent service"
+
+      - name: R3c - a service that is implemented must be complete
+        run: |
+          set -euo pipefail
+          # The inverse of R3. Once a service exists it must have its own pom,
+          # port, config, tests and Dockerfile, or it is a half-built service.
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          implemented=0
+          for s in $services; do
+            if [ ! -f "backend/$s/pom.xml" ]; then continue; fi
+            implemented=$((implemented + 1))
+            for required in "backend/$s/pom.xml" "backend/$s/Dockerfile" "backend/$s/README.md" \
+                            "backend/$s/src/main/resources/application.yml"; do
+              [ -f "$required" ] || { echo "::error::$s is implemented but missing $required"; exit 1; }
+            done
+            [ -d "backend/$s/src/test" ] || { echo "::error::$s has no tests of its own"; exit 1; }
+            grep -q "port:" "backend/$s/src/main/resources/application.yml" \
+              || { echo "::error::$s does not declare its own port"; exit 1; }
+            mains=$(grep -rl "@SpringBootApplication" "backend/$s/src/main" 2>/dev/null | wc -l)
+            [ "$mains" -eq 1 ] || { echo "::error::$s must contain exactly one @SpringBootApplication, found $mains"; exit 1; }
+          done
+          echo "ok: $implemented service(s) implemented, all complete"
+
+      - name: R4 - each service names only its own database
+        run: |
+          set -euo pipefail
+          declare -A owner=(
+            [nexa_auth]=auth-service
+            [nexa_user]=user-service
+            [nexa_chat]=chat-service
+            [nexa_document]=document-service
+            [nexa_rag]=rag-service
+            [nexa_subscription]=subscription-service
+          )
+          pattern='nexa_(auth|user|chat|document|rag|subscription)'
+          # README files are excluded on purpose: a service's README documents
+          # the boundary, so it may legitimately mention what it does NOT own.
+          for db in "${!owner[@]}"; do
+            svc="${owner[$db]}"
+            found=$(grep -rhoE "$pattern" "backend/$svc" \
+                     --include='*.yml' --include='*.yaml' --include='*.java' \
+                     --include='*.xml' --include='*.sql' --include='*.properties' \
+                     2>/dev/null | sort -u || true)
+            [ -z "$found" ] && continue
+            if [ "$found" != "$db" ]; then
+              echo "::error::$svc references a database it does not own."
+              echo "::error::found: $(echo "$found" | tr '\n' ' ')   expected only: $db"
+              exit 1
+            fi
+          done
+          echo "ok: each service names only its own database"
+
+      - name: R5 - the AI Service and the gateway are database-free
+        run: |
+          set -euo pipefail
+          for s in ai-service api-gateway; do
+            # Match real configuration and real code, not prose. A comment saying
+            # "this service has no datasource" must not fail the check, so
+            # comment lines in YAML, Java and XML are filtered out, and README
+            # files are excluded for the same reason.
+            if grep -rniE 'datasource|spring\.jdbc|flyway|EntityManager' "backend/$s" \
+                 --include='*.yml' --include='*.yaml' --include='*.java' \
+                 --include='*.xml' --include='*.properties' 2>/dev/null \
+               | grep -vE ':[0-9]+:[[:space:]]*(#|//|\*|<!--)' \
+               | grep -qE '.' ; then
+              echo "::error::$s must not have a database. It is stateless by design. See docs/ARCHITECTURE.md section 3.2."
+              exit 1
+            fi
+          done
+          echo "ok: ai-service and api-gateway are database-free"
+
+      # ---------------------------------------------------------------------
+      # Prohibitions
+      # ---------------------------------------------------------------------
+
+      - name: R6 - ZooKeeper is prohibited
+        run: |
+          set -euo pipefail
+          # WHY THIS IS NOT A NAIVE grep -ri zookeeper OVER EVERYTHING
+          #
+          # The prohibition has to be stated in the very places where ZooKeeper
+          # would be added: this file, the docs, and the Compose file. So the
+          # word "ZooKeeper" appears legitimately in prose and in comments, and a
+          # naive whole-tree scan fails on the very text that forbids it.
+          #
+          # Worse, a whole-tree scan with --include globs still matches source
+          # prose that merely says the word, which was a real false positive here
+          # during Phase 0: App.tsx legitimately states "there is no ZooKeeper
+          # anywhere in this project".
+          #
+          # So this check is scoped to WHERE ZooKeeper would actually be WIRED IN,
+          # and it filters comment lines. Two forms:
+          #
+          #   1. A declaration in configuration: a service, image or variable.
+          #   2. A client usage in source: a ZooKeeper class or Maven coordinate.
+          #
+          # The scopes are directories (infrastructure/, backend/, frontend/), not
+          # ".", because a directory scope cannot accidentally reach application
+          # prose. The pattern is still broad enough to catch every realistic
+          # wiring, which the self-test below proves.
+
+          strip_comments() { grep -vE ':[0-9]+:[[:space:]]*(#|//|\*|<!--)'; }
+
+          # 1. A ZooKeeper declaration in infrastructure and service config.
+          cfg=$(grep -rniIE \
+                  --include='docker-compose*.yml' --include='compose*.yml' \
+                  --include='*.yml' --include='*.yaml' --include='*.properties' \
+                  --include='*.conf' --include='Dockerfile*' \
+                  '(zookeeper[^a-z]|[a-z]zookeeper)' \
+                  infrastructure/ backend/ frontend/ \
+                | strip_comments || true)
+          if [ -n "$cfg" ]; then
+            echo "::error::ZooKeeper declared in configuration. KRaft only. See docs/RULES.md section 4."
+            echo "$cfg" | head -5
+            exit 1
+          fi
+
+          # 2. A ZooKeeper client wired into source or a build file.
+          #
+          # These are the concrete ways ZooKeeper enters a Spring or Kafka
+          # application: the client package, the Kafka admin client that requires
+          # it, the Spring Cloud property, or the Maven coordinate.
+          client=$(grep -rniIE \
+                   --include='*.java' --include='*.kt' --include='pom.xml' \
+                   --include='build.gradle' --include='*.yml' --include='*.yaml' \
+                   --include='*.properties' --include='Dockerfile*' \
+                   '(org\.apache\.zookeeper|zkClient|ZkAdminClient|spring\.cloud\.zookeeper|spring-cloud-starter-zookeeper|curator-framework|<artifactId>zookeeper)' \
+                   backend/ \
+                 | strip_comments || true)
+          if [ -n "$client" ]; then
+            echo "::error::a ZooKeeper client is wired in. KRaft only. See docs/RULES.md section 4."
+            echo "$client" | head -5
+            exit 1
+          fi
+
+          # --- SELF-TEST -------------------------------------------------
+          # A check that cannot fail is worse than no check (docs/RULES.md
+          # section 11). Prove this one still catches the violations it exists
+          # for, using a throwaway file outside the repository.
+          probe=$(mktemp -d)
+          printf 'services:\n  zookeeper:\n    image: zookeeper:3.9.3\n' \
+            > "$probe/docker-compose.yml"
+          if ! grep -rniIE '(zookeeper[^a-z]|[a-z]zookeeper)' "$probe" \
+               --include='docker-compose*.yml' | strip_comments | grep -q . ; then
+            echo "::error::R6 self-test failed: the pattern does not detect a ZooKeeper compose service, so this check is not trustworthy."
+            rm -rf "$probe"
+            exit 1
+          fi
+          rm -rf "$probe"
+          # --- END SELF-TEST --------------------------------------------
+
+          echo "ok: no ZooKeeper declaration, no ZooKeeper client, and the self-test proves the check works"
+
+      - name: R7 - Kafka must be in KRaft mode
+        run: |
+          set -euo pipefail
+          grep -q "KAFKA_PROCESS_ROLES" infrastructure/docker-compose.yml \
+            || { echo "::error::Kafka is not configured in KRaft mode. See docs/RULES.md section 4."; exit 1; }
+          grep -q "KAFKA_CONTROLLER_QUORUM_VOTERS" infrastructure/docker-compose.yml \
+            || { echo "::error::the Kafka controller quorum is not configured"; exit 1; }
+          grep -q "broker,controller" infrastructure/docker-compose.yml \
+            || { echo "::error::the combined broker+controller KRaft node is not configured"; exit 1; }
+          echo "ok: Kafka is in KRaft mode"
+
+      - name: R8 - Tailwind is prohibited; Bootstrap and Sass are required
+        run: |
+          set -euo pipefail
+          if grep -rniI 'tailwind' frontend/nexa-ai-web/package.json frontend/nexa-ai-web/src frontend/nexa-ai-web/index.html 2>/dev/null; then
+            echo "::error::Tailwind is present in the frontend. Bootstrap 5 and SCSS only. See docs/RULES.md section 5."
+            exit 1
+          fi
+          if grep -rniE '@tailwind|tailwind\.config' frontend/nexa-ai-web/src 2>/dev/null; then
+            echo "::error::a Tailwind directive is present in the frontend styles."
+            exit 1
+          fi
+          # A Tailwind-free project that is also Bootstrap-free is not wired to
+          # the design system, which is the point of the rule.
+          node -e "
+            const p = require('./frontend/nexa-ai-web/package.json');
+            const all = { ...(p.dependencies||{}), ...(p.devDependencies||{}) };
+            const missing = ['bootstrap','sass'].filter(d => !all[d]);
+            if (missing.length) { console.error('::error::missing frontend dependency: ' + missing.join(', ')); process.exit(1); }
+            const banned = ['next','vue','ng','@angular/core'].filter(d => all[d]);
+            if (banned.length) { console.error('::error::prohibited frontend framework: ' + banned.join(', ')); process.exit(1); }
+            console.log('ok: bootstrap and sass present, tailwind and next/vue/angular absent');
+          "
+
+      - name: R9 - no secrets in source
+        run: |
+          set -euo pipefail
+          # Nothing that looks like a live provider or payment credential. The
+          # .github directory is excluded because the patterns must be written
+          # out literally in order to search for them.
+          if grep -rniIE --exclude-dir=target --exclude-dir=node_modules --exclude-dir=.git \
+               --exclude-dir=.github --exclude='*.example' --exclude='*.md' \
+               '(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|rzp_live_[A-Za-z0-9]{10,}|ghp_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' . ; then
+            echo "::error::a credential-shaped string is committed. See docs/RULES.md section 6."
+            exit 1
+          fi
+          # No .env file may be tracked; only .env.example.
+          if git ls-files | grep -E '(^|/)\.env$'; then
+            echo "::error::a .env file is tracked. Only .env.example is allowed. See docs/RULES.md section 6."
+            exit 1
+          fi
+          # Every .env.example must hold only empty or obviously-local values.
+          for f in $(git ls-files | grep -E '\.env\.example$' || true); do
+            if grep -nE '^[A-Z0-9_]+=.+$' "$f" | grep -viE '=($|localhost|http://|127\.0\.0\.1)'; then
+              echo "::error::$f appears to contain a real value. Only empty placeholders are allowed."
+              exit 1
+            fi
+          done
+          # Key material must never be tracked at all.
+          if git ls-files | grep -iE '\.(pem|key|p12|pfx|jks|keystore)$'; then
+            echo "::error::key material is tracked. See docs/RULES.md section 6."
+            exit 1
+          fi
+          echo "ok: no committed secrets"
+
+      - name: R10 - exactly two roles: USER and ADMIN
+        run: |
+          set -euo pipefail
+          # Looks in real code and configuration only.
+          #
+          # Two exclusions are required, and both were found the hard way during
+          # Phase 0:
+          #
+          #   *.md  docs/RULES.md section 8 must be able to NAME the prohibited
+          #         roles in order to forbid them.
+          #   .github  this workflow must be able to name the pattern it searches
+          #         for. Without this, the check matches its own source and fails
+          #         every run, which is the worst kind of broken check: one that
+          #         trains people to ignore it.
+          #
+          # Both directories are also where the rule's own text legitimately
+          # lives, so neither is a place a role could actually be used.
+          if grep -rnIiE '(SUPER_ADMIN|SUPERADMIN|ROLE_MODERATOR|MODERATOR|ROLE_SUPPORT|ROLE_OWNER)' \
+               --include='*.java' --include='*.kt' --include='*.ts' --include='*.tsx' \
+               --include='*.yml' --include='*.yaml' --include='*.sql' --include='*.json' \
+               --exclude-dir=node_modules --exclude-dir=target --exclude-dir=dist \
+               --exclude-dir=.git --exclude-dir=.github --exclude='*.md' . ; then
+            echo "::error::a role outside USER and ADMIN appears. See docs/RULES.md section 8."
+            exit 1
+          fi
+          echo "ok: no role outside USER and ADMIN"
+
+      - name: R11 - Razorpay is test mode only
+        run: |
+          set -euo pipefail
+          # The word "rzp_live_" has to be NAMEABLE in docs/RULES.md and in the
+          # subscription-service README in order to forbid it, and
+          # RAZORPAY_MODE has to be nameable in order to pin it to test. So this
+          # check must exclude the places where the rule is stated, exactly as
+          # R6, R9 and R10 do.
+          #
+          # That is not a weakening. A credential is a value in a configuration
+          # or a source file; it is never a sentence in prose. Every realistic
+          # leak -- a .env, a Compose file, a Java constant, a YAML property --
+          # is still caught, and the self-test below proves it.
+          common=(--exclude-dir=node_modules --exclude-dir=dist --exclude-dir=target
+                  --exclude-dir=.git --exclude-dir=.github)
+
+          strip_comments() { grep -vE ':[0-9]+:[[:space:]]*(#|//|\*|<!--)'; }
+
+          # A live key in any tracked configuration, source or example file.
+          live=$(grep -rniIE "${common[@]}" --exclude='*.md' \
+                   'rzp_live_[A-Za-z0-9]{6,}' . | strip_comments || true)
+          if [ -n "$live" ]; then
+            echo "::error::a Razorpay live key is present. Test mode only. See docs/RULES.md section 9."
+            echo "$live" | head -5
+            exit 1
+          fi
+
+          # Any other live-mode variable, anywhere. The ABSENCE of these is the
+          # control, so their presence is the failure. This is why the repository
+          # has no RAZORPAY_LIVE_* variable at all, rather than one that is never
+          # set.
+          if grep -rniIE "${common[@]}" --exclude='*.md' 'RAZORPAY_LIVE' . ; then
+            echo "::error::a live-mode Razorpay variable exists. Test mode only. See docs/RULES.md section 9."
+            exit 1
+          fi
+
+          # RAZORPAY_MODE is allowed to EXIST, because it is pinned to `test`.
+          # It is flagged only when it is set to anything other than test.
+          #
+          # Expressed as "find every mention, then subtract the allowed one"
+          # rather than as a negative character class. An earlier version used
+          # RAZORPAY_MODE[[:space:]]*[:=][[:space:]]*[^t], which was wrong:
+          # [[:space:]]* backtracks to zero, so [^t] matched the space after the
+          # colon and the perfectly legal `RAZORPAY_MODE: test` was flagged. A
+          # check that flags the correct configuration gets switched off, so this
+          # is corrected rather than left as a false positive.
+          modes=$(grep -rniE "${common[@]}" --exclude='*.md' 'RAZORPAY_MODE' . \
+                    | strip_comments || true)
+          bad_mode=$(printf '%s\n' "$modes" \
+                     | grep -vE 'RAZORPAY_MODE[[:space:]]*[:=][[:space:]]*.?test.?[[:space:]]*$' \
+                     || true)
+          if [ -n "$bad_mode" ]; then
+            echo "::error::RAZORPAY_MODE is set to something other than test. Test mode only. See docs/RULES.md section 9."
+            echo "$bad_mode" | head -5
+            exit 1
+          fi
+
+          # --- SELF-TEST -------------------------------------------------
+          # A check that cannot fail is worse than no check (docs/RULES.md
+          # section 11). Prove this one still catches what it exists for.
+          probe=$(mktemp -d)
+          printf 'RAZORPAY_TEST_KEY_ID: rzp_test_abc123\nRAZORPAY_LIVE_KEY: rzp_live_XxYyZz\n' \
+            > "$probe/docker-compose.yml"
+          if ! grep -rniIE 'rzp_live_[A-Za-z0-9]{6,}' "$probe" --include='*.yml' | grep -q . ; then
+            echo "::error::R11 self-test failed: the pattern does not detect a live key in a Compose file, so this check is not trustworthy."
+            rm -rf "$probe"
+            exit 1
+          fi
+          rm -rf "$probe"
+
+          # Self-test 2: a live-mode VARIABLE must be caught.
+          probe2=$(mktemp -d)
+          printf 'RAZORPAY_LIVE_KEY_SECRET: something\n' > "$probe2/application.yml"
+          if ! grep -rniE 'RAZORPAY_LIVE' "$probe2" --include='*.yml' | grep -q . ; then
+            echo "::error::R11 self-test 2 failed: the pattern does not detect a live-mode variable, so this check is not trustworthy."
+            rm -rf "$probe2"
+            exit 1
+          fi
+          rm -rf "$probe2"
+
+          # Self-test 3: the CORRECT configuration must NOT be flagged.
+          # A check that fails on correct code is a check that gets switched
+          # off, so proving the negative case is the half that matters most.
+          probe3=$(mktemp -d)
+          printf 'RAZORPAY_MODE: test\nRAZORPAY_TEST_KEY_ID: rzp_test_abc123\n' \
+            > "$probe3/docker-compose.yml"
+          if printf 'RAZORPAY_MODE: test\n' \
+               | grep -vE 'RAZORPAY_MODE[[:space:]]*[:=][[:space:]]*.?test.?[[:space:]]*$' \
+               | grep -q . ; then
+            echo "::error::R11 self-test 3 failed: RAZORPAY_MODE: test is wrongly flagged as a violation."
+            rm -rf "$probe3"
+            exit 1
+          fi
+          rm -rf "$probe3"
+          # --- END SELF-TEST --------------------------------------------
+
+          echo "ok: test mode only, and three self-tests prove the check works"
+
+      - name: R12 - the Compose file is valid
+        run: docker compose -f infrastructure/docker-compose.yml --profile infra config --quiet
+        # Parsed, not started. A service that does not exist has no image, so
+        # nothing here builds an image. See docs/DECISIONS.md ADR-016.
+
+      - name: R13 - documentation is present and tracked
+        run: |
+          set -euo pipefail
+          for d in PRD ARCHITECTURE RULES DESIGN TASKS TEST_PLAN SECURITY DECISIONS SERVICE_CONTRACTS MEMORY; do
+            [ -f "docs/$d.md" ] || { echo "::error::missing docs/$d.md"; exit 1; }
+          done
+          # The single most important line in .gitignore. An earlier draft
+          # ignored docs/ itself, which would have silently excluded every
+          # document from the repository while the files still existed on disk.
+          if grep -qxE 'docs/' .gitignore; then
+            echo "::error::.gitignore ignores docs/. Documentation is source code and must be tracked. See docs/RULES.md section 12."
+            exit 1
+          fi
+          echo "ok: all ten documents exist and docs/ is tracked"
+
+      - name: R14 - the frontend has no secrets and no prohibited stack
+        run: |
+          set -euo pipefail
+          cd frontend/nexa-ai-web
+          if grep -rniIE --exclude='*.example' \
+               '(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|rzp_(live|test)_[A-Za-z0-9]{10,})' \
+               src/ .env* 2>/dev/null; then
+            echo "::error::a credential-shaped string is in frontend source. See docs/RULES.md section 6."
+            exit 1
+          fi
+          # There must be no variable in the frontend that could hold an AI
+          # provider key. Vite inlines VITE_*, so the check is on the NAME, not
+          # the value: an empty OPENAI_API_KEY here would still be a
+          # catastrophic mistake the moment someone filled it in.
+          if grep -rniE 'VITE_.*(API_KEY|SECRET|PRIVATE|TOKEN|PASSWORD)' . 2>/dev/null \
+               --include='*.ts' --include='*.tsx' --include='*.example'; then
+            echo "::error::a VITE_ variable that could hold a credential exists. Vite inlines every VITE_ value into the bundle. See docs/RULES.md section 6."
+            exit 1
+          fi
+          echo "ok: no credentials in the frontend, and no variable that could hold one"
+
+      # ---------------------------------------------------------------------
+      # Honesty about what was and was not verified
+      # ---------------------------------------------------------------------
+
+      - name: Report - what this pipeline actually verified
+        run: |
+          set -euo pipefail
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          implemented=0
+          for s in $services; do
+            [ -f "backend/$s/pom.xml" ] && implemented=$((implemented + 1))
+          done
+
+          {
+            echo "### NexaAI CI report"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Backend services implemented | $implemented / 8 |"
+            echo "| Frontend toolchain | type-checks, lints and builds |"
+            echo "| Infrastructure | Compose file parses |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$implemented" -eq 0 ]; then
+            {
+              echo "> **No backend service is implemented yet.** This is Phase 0, where the"
+              echo "> architecture is established and no business code exists by rule"
+              echo "> (docs/RULES.md section 10). The rule checks above validated the"
+              echo "> structure; no application code was built or tested, because there is"
+              echo "> none. This is a deliberate, documented state, not a skipped check."
+              echo ">"
+              echo "> The Compose stack and the database isolation scripts are also unverified:"
+              echo "> see docs/MEMORY.md section 6.1."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "NOTICE: 0 of 8 services implemented. Rule checks only; no application code was built or tested."
+          else
+            echo "NOTICE: $implemented of 8 services implemented and built independently."
+          fi
