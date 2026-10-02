@@ -1,0 +1,34 @@
+# Build context excludes. Anything listed here is unavailable to `docker build`,
+# which keeps the image smaller and reduces what a compromised build step could
+# read.
+
+node_modules
+dist
+dist-ssr
+.vite
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Secrets. .env.local is gitignored, but excluding it here means it cannot be
+# read from the build context either. Nothing secret belongs in a frontend
+# image in the first place.
+.env
+.env.*
+!.env.example
+
+# Never ship documentation, CI or editor state into a runtime image.
+*.md
+.github
+.vscode
+.idea
+.oxlintrc.json
+tsconfig*.json
+
+Dockerfile
+.dockerignore
+
+.git
+.gitignore

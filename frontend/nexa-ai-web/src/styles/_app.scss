@@ -1,0 +1,75 @@
+// =====================================================================
+// Application component styles.
+//
+// Everything here sits ON TOP of Bootstrap. The rule from docs/DESIGN.md is
+// that the visual language lives in this stylesheet and not in markup, so a
+// change to how something looks is made here rather than by editing classes
+// across components.
+// =====================================================================
+
+@use 'tokens' as t;
+
+// --- wordmark ---------------------------------------------------------------
+.nexa-wordmark {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--nexa-accent);
+}
+
+// --- surfaces ---------------------------------------------------------------
+// Uses a token rather than a literal, so it follows the theme automatically.
+.nexa-surface-raised {
+  background-color: var(--nexa-surface-raised);
+  border: 1px solid var(--nexa-border);
+  border-radius: t.$nexa-radius-lg;
+  box-shadow: 0 4px 16px rgb(var(--nexa-shadow-color) / 8%);
+}
+
+// --- layout -----------------------------------------------------------------
+// Caps the reading measure. A full-width paragraph at 1920px is unreadable, and
+// generated answers are exactly the text that suffers from it.
+.nexa-measure {
+  max-width: t.$nexa-measure;
+}
+
+.nexa-stack > * + * {
+  margin-block-start: t.$nexa-space-4;
+}
+
+// --- focus ------------------------------------------------------------------
+// Focus is never removed. Only its appearance is replaced, so keyboard users
+// can always see where they are (docs/DESIGN.md section 3.4).
+:focus-visible {
+  outline: 3px solid var(--nexa-accent);
+  outline-offset: 2px;
+  border-radius: t.$nexa-radius-sm;
+}
+
+// --- interactive targets ----------------------------------------------------
+.nexa-touch-target {
+  min-width: t.$nexa-touch-target;
+  min-height: t.$nexa-touch-target;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+// --- chat thread ------------------------------------------------------------
+// Placeholder for Phase 5. The message, citation and streaming styles are
+// written in the Chat phase, when the SSE contract is implemented. Adding them
+// now would mean guessing at the event names in
+// docs/SERVICE_CONTRACTS.md section 7.2, and a guessed class name that nothing
+// uses is not a placeholder, it is dead code.
+
+// --- reduced motion ---------------------------------------------------------
+// Respect the OS setting rather than animating regardless.
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
