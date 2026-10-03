@@ -72,6 +72,10 @@ Thumbs.db
 *.dylib
 
 # ---------------------------------------------------------------- docs ----
+
+docs/
+
+
 # Generated API documentation
 site/
 apidocs/
@@ -81,3 +85,5 @@ apidocs/
 # NOTE: docs/ itself is deliberately NOT ignored. Documentation is source code.
 # Generated API documentation below is ignored; the hand-written docs are tracked.
 # CI check R13 fails the build if a bare `docs/` line reappears here.
+
+
