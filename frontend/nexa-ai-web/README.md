@@ -4,7 +4,7 @@ The NexaAI web client. React + Vite + TypeScript + Bootstrap 5 + SCSS, Lucide ic
 
 **Phase 0: this is a toolchain shell, not a product.** It exists to prove that the frontend
 stack compiles, type-checks, lints and builds. Product screens arrive in Phase 10
-([`../../docs/TASKS.md`](../../docs/TASKS.md)), with the auth screens in Phase 3.
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)), with the auth screens in Phase 3.
 
 See [`../../docs/DESIGN.md`](../../docs/DESIGN.md) for the frontend architecture and visual
 system.
@@ -58,7 +58,7 @@ src/
 
 `api/`, `features/`, `components/`, `hooks/`, `types/` and `utils/` appear as their phases
 arrive. They are **not** created empty now: a directory of empty folders is not a structure,
-it is clutter ([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-015).
+it is clutter ([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-015).
 
 ---
 
@@ -72,7 +72,7 @@ it is clutter ([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-015).
 3. **Bootstrap classes, not utility soup.** Visual changes go in `_theme.scss` and
    `_app.scss`, not into markup.
 4. **Streaming must not be buffered.** Every proxy hop needs `proxy_buffering off`
-   ([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-021).
+   ([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-021).
 5. **Accessibility is part of done.** Semantic elements, visible focus, labelled controls, AA
    contrast in both themes ([`../../docs/DESIGN.md`](../../docs/DESIGN.md) §3.4).
 
@@ -104,4 +104,4 @@ In development `VITE_API_BASE_URL` stays empty, because the dev server proxies `
 
 **The Docker image is not verified.** The build needs no Docker daemon, so
 `Dockerfile` and `nginx.conf` have not been executed
-([`../../docs/MEMORY.md`](../../docs/MEMORY.md) §6.1).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) §6.1).

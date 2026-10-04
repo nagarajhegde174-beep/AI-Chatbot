@@ -71,19 +71,17 @@ Thumbs.db
 *.so
 *.dylib
 
-# ---------------------------------------------------------------- docs ----
-
-docs/
-
-
-# Generated API documentation
+# ------------------------------- generated API documentation ---------------
+# Only GENERATED documentation is ignored. The seven documents in docs/ are
+# source code and are tracked.
 site/
 apidocs/
 **/target/site/
 **/target/jacoco/
 
-# NOTE: docs/ itself is deliberately NOT ignored. Documentation is source code.
-# Generated API documentation below is ignored; the hand-written docs are tracked.
-# CI check R13 fails the build if a bare `docs/` line reappears here.
+# NOTE: docs/ itself is deliberately NOT ignored. A bare `docs/` line appeared
+# here twice during Phase 0/1 and silently excluded every document from the
+# repository while the files still existed on disk and CI reported green.
+# CI check R13 fails the build if that line ever returns.
 
 

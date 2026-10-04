@@ -3,10 +3,10 @@
 **Status: planned. This directory contains no code.**
 
 Phase 0 creates the service boundaries. `ai-service` is implemented in **Phase 4**
-([`../../docs/TASKS.md`](../../docs/TASKS.md)).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)).
 
 Nothing here is a placeholder controller or a stub
-([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
 
 ---
 
@@ -26,7 +26,7 @@ This service owns **no database and no role**. It holds no user, no conversation
 It receives a fully-built request and returns tokens.
 
 That is a deliberate statement, not an optimisation
-([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-007):
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-007):
 
 - It scales horizontally with no session affinity.
 - It restarts with no data loss, because it has none.
@@ -43,7 +43,7 @@ Multi-model LLM inference and streaming, through Spring AI.
 ## Does
 
 - Reach OpenAI, Google Gemini and Groq/LLaMA through **Spring AI only**. No provider SDK
-  directly ([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-006)
+  directly ([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-006)
 - Stream tokens over SSE
 - Classify provider errors: rate limited, timeout, filtered, outage
 - Circuit-break per provider
@@ -77,4 +77,4 @@ Read [`../../docs/RULES.md`](../../docs/RULES.md), then
 [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) §6.
 
 Spring AI 2.x is a new major version. Confirm the starter names and the autoconfiguration for
-each provider before building on it ([`../../docs/MEMORY.md`](../../docs/MEMORY.md) §6.3).
+each provider before building on it ([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) §6.3).

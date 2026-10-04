@@ -1,0 +1,184 @@
+# =====================================================================
+# auth-service configuration.
+#
+# EVERY value is bound from an environment variable. There is no default for
+# anything security-relevant: a missing signing key fails at startup, which is
+# the correct time to find out. A missing API key is a deployment error, not a
+# runtime condition.
+#
+# Docs: docs/RULES.md section 6, docs/SECURITY.md section 5.
+# =====================================================================
+
+server:
+  port: ${SERVER_PORT:8081}
+  error:
+    # Never render a stack trace into a response body, in any profile.
+    include-stacktrace: never
+    include-message: never
+    include-exception: false
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      # No session: this service is stateless. A session would put state in a
+      # service that must hold none (docs/ARCHITECTURE.md decision 007).
+      persistent: false
+
+spring:
+  application:
+    name: auth-service
+
+  datasource:
+    # nexa_auth and nothing else. The role is granted on exactly one database,
+    # so a cross-service query fails with a permission error rather than
+    # quietly succeeding (docs/RULES.md section 3).
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nexa_auth}
+    username: ${SPRING_DATASOURCE_USERNAME:nexa_auth}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: 2
+      connection-timeout: 5000
+      pool-name: nexa-auth-pool
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema. Hibernate must never alter it, or the
+      # migrations stop being the record of what the schema is.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+        format_sql: false
+        # Log bind parameters never: a password would be among them.
+        jdbc.batch_size: 25
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    # Refuse to start if a migration is checksum-mismatched. Silently ignoring
+    # a changed migration means the database and the code disagree about the
+    # schema, which is the worst possible state to discover later.
+    validate-on-migrate: true
+    clean-disabled: true
+
+  # NOTE: the Google OAuth2 client is NOT declared here.
+  #
+  # Declaring `registration.google` with empty client-id values makes Spring Boot
+  # fail at startup with "Client id of registration 'google' must not be empty",
+  # which would make Google credentials load-bearing for every deployment.
+  #
+  # It is registered programmatically in GoogleClientConfig, guarded by
+  # `nexa.auth.google.enabled=true`. Until someone sets that flag and supplies
+  # credentials, the registration simply does not exist.
+  #
+  # To enable it, set:
+  #   NEXA_AUTH_GOOGLE_ENABLED=true
+  #   GOOGLE_CLIENT_ID=...
+  #   GOOGLE_CLIENT_SECRET=...
+  security: {}
+
+  threads:
+    virtual:
+      enabled: true
+
+# =====================================================================
+# Service configuration.
+# =====================================================================
+nexa:
+  auth:
+    # Frontend origin for links in emails and the post-login redirect. Never
+    # derived from a request parameter: that would be an open redirect.
+    frontend-base-url: ${NEXA_AUTH_FRONTEND_BASE_URL:http://localhost:5173}
+
+    jwt:
+      # PEM-encoded RS256 keys. Supplied inline or as a file reference; never
+      # committed. Generate with the command in docs/SECURITY.md section 2.
+      private-key: ${NEXA_AUTH_JWT_PRIVATE_KEY:}
+      public-key: ${NEXA_AUTH_JWT_PUBLIC_KEY:}
+      issuer: ${NEXA_AUTH_JWT_ISSUER:nexa-auth-service}
+      audience: ${NEXA_AUTH_JWT_AUDIENCE:nexaai-web}
+      key-id: ${NEXA_AUTH_JWT_KEY_ID:nexa-auth-rs256-1}
+
+    token:
+      access-token-ttl: ${NEXA_AUTH_ACCESS_TOKEN_TTL:PT15M}
+      refresh-token-ttl: ${NEXA_AUTH_REFRESH_TOKEN_TTL:P30D}
+      verification-token-ttl: ${NEXA_AUTH_VERIFICATION_TOKEN_TTL:PT24H}
+      reset-token-ttl: ${NEXA_AUTH_RESET_TOKEN_TTL:PT1H}
+      max-failed-logins: ${NEXA_AUTH_MAX_FAILED_LOGINS:5}
+      lock-duration: ${NEXA_AUTH_LOCK_DURATION:PT15M}
+      failure-window: ${NEXA_AUTH_FAILURE_WINDOW:PT15M}
+
+    cookie:
+      prefix: ${NEXA_AUTH_COOKIE_PREFIX:nexa}
+      # Must be true in any non-local environment. A cookie without Secure is
+      # sent over plaintext, so a token would cross the network in the clear.
+      secure: ${NEXA_AUTH_COOKIE_SECURE:true}
+      same-site: ${NEXA_AUTH_COOKIE_SAME_SITE:Strict}
+      path: /
+      domain: ${NEXA_AUTH_COOKIE_DOMAIN:}
+
+    password:
+      # argon2 is memory-hard and resists GPU cracking; bcrypt is the fallback.
+      encoder: ${NEXA_AUTH_PASSWORD_ENCODER:argon2}
+      min-length: ${NEXA_AUTH_PASSWORD_MIN_LENGTH:12}
+      max-length: ${NEXA_AUTH_PASSWORD_MAX_LENGTH:128}
+
+    lockout:
+      enabled: ${NEXA_AUTH_LOCKOUT_ENABLED:true}
+
+    one-time:
+      # Development convenience. Refused outside a local profile, so it cannot
+      # be switched on in a deployed environment by accident.
+      log-tokens: ${NEXA_AUTH_LOG_ONE_TIME_TOKENS:false}
+
+    outbox:
+      enabled: ${NEXA_AUTH_OUTBOX_ENABLED:true}
+      poll-interval: ${NEXA_AUTH_OUTBOX_POLL_INTERVAL:PT5S}
+      batch-size: ${NEXA_AUTH_OUTBOX_BATCH_SIZE:100}
+      max-attempts: ${NEXA_AUTH_OUTBOX_MAX_ATTEMPTS:10}
+
+    google:
+      enabled: ${NEXA_AUTH_GOOGLE_ENABLED:false}
+
+# =====================================================================
+# Observability.
+# =====================================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only health and info. Everything else is denied by the security
+        # filter chain and should stay that way.
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  info:
+    env:
+      enabled: false
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+info:
+  app:
+    name: NexaAI Auth Service
+    description: Credentials, tokens and account status. Owns nexa_auth.
+
+logging:
+  level:
+    root: INFO
+    com.nexaai.auth: ${NEXA_AUTH_LOG_LEVEL:INFO}
+    org.springframework.security: WARN
+    # SQL logging is off: bind parameters include password hashes.
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%X{correlationId:-no-correlation-id}] %logger{36} - %msg%n"

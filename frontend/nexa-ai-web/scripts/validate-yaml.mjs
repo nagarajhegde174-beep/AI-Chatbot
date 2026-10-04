@@ -9,7 +9,7 @@
  *
  * Run from the repository root:  node frontend/nexa-ai-web/scripts/validate-yaml.mjs
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 /**
@@ -109,15 +109,43 @@ console.log(`\nCompose services: ${declared.join(', ') || '(none)'}`)
 const backendSvcs = ['api-gateway', 'auth-service', 'user-service', 'chat-service',
   'ai-service', 'document-service', 'rag-service', 'subscription-service']
 
+/**
+ * A service counts as implemented when it has a buildable source tree, which is
+ * what `mvn package` needs. A directory holding only a README is not something
+ * Compose can build, which was the whole point of ADR-015.
+ */
+function isImplemented(service) {
+  return existsSync(join(ROOT, 'backend', service, 'pom.xml'))
+    && existsSync(join(ROOT, 'backend', service, 'src'))
+}
+
+const implemented = backendSvcs.filter(isImplemented)
 const present = backendSvcs.filter((s) => declared.includes(s))
-if (present.length > 0) {
+
+const declaredButUnimplemented = present.filter((s) => !isImplemented(s))
+if (declaredButUnimplemented.length > 0) {
   PROBLEMS.push(
-    `docker-compose.yml declares backend service(s) ${present.join(', ')}, but no service is ` +
-    'implemented. A Compose entry with no image to build is configuration that cannot work. ' +
-    'See docs/DECISIONS.md ADR-015.',
+    `docker-compose.yml declares ${declaredButUnimplemented.join(', ')}, but those have no ` +
+    'buildable source. A Compose entry with no image to build is configuration that cannot ' +
+    'work. See docs/ARCHITECTURE.md section 13.',
   )
-} else {
+}
+
+const implementedButUndeclared = implemented.filter((s) => !declared.includes(s))
+if (implementedButUndeclared.length > 0) {
+  PROBLEMS.push(
+    `${implementedButUndeclared.join(', ')} ${implementedButUndeclared.length > 1 ? 'are' : 'is'} ` +
+    'implemented but absent from docker-compose.yml, so it could never actually run.',
+  )
+}
+
+console.log(
+  `\nImplemented services: ${implemented.join(', ') || '(none)'}`,
+)
+if (present.length === 0 && implemented.length === 0) {
   console.log('ok: no backend service is declared, because none is implemented')
+} else if (declaredButUnimplemented.length === 0 && implementedButUndeclared.length === 0) {
+  console.log('ok: every implemented service is declared, and every declared service exists')
 }
 
 console.log('')

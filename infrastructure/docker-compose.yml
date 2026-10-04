@@ -15,12 +15,17 @@
 #  Those service entries are intentionally absent rather than present and
 #  commented out. A commented service block looks like configuration, and the
 #  first person to uncomment it would be running an image that does not exist.
-#  See docs/DECISIONS.md ADR-015 and docs/RULES.md section 10.
+#  See docs/ARCHITECTURE.md decision 015 and docs/RULES.md section 10.
 # =====================================================================
 #
 # ARCHITECTURE, not a monolith: every backend entry that gets added here is a
 # separate image built from its own directory, with its own port and its own
 # database credentials.
+#
+# Phase 1 added auth-service. The other seven are added in their own phases, as
+# each is implemented. A commented-out service block would look like
+# configuration, and the first person to uncomment it would be running an image
+# that does not exist.
 #
 # There is NO ZooKeeper service in this file, and there must never be one.
 # Kafka runs in KRaft mode. ZooKeeper is prohibited by docs/RULES.md section 4.
@@ -173,6 +178,57 @@ services:
       retries: 10
       start_period: 30s
     networks: [nexa-internal]
+
+  # ===========================================================================
+  # BACKEND
+  # ===========================================================================
+  #
+  # Every service below receives ONLY the values it needs:
+  #
+  #   SPRING_DATASOURCE_URL/USERNAME/PASSWORD  that service's own database.
+  #     There is no shared username and no shared database, so a service
+  #     physically cannot reach another service's data even if it tries.
+  #   KAFKA_BOOTSTRAP_SERVERS                  the internal Kafka listener.
+  #   REDIS_HOST                               the cache, never a source of truth.
+  #   *_API_KEY / *_SECRET                     provider credentials, never committed.
+
+  # ----------------------------------------------------------- auth-service --
+  # Owns nexa_auth and nothing else. The only service that knows a password.
+  auth-service:
+    <<: *service-defaults
+    profiles: [backend]
+    build:
+      context: ../backend/auth-service
+      dockerfile: Dockerfile
+    image: nexaai/auth-service:0.1.0-SNAPSHOT
+    container_name: nexa-auth-service
+    ports:
+      - "${AUTH_SERVICE_PORT:-8081}:8081"
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8081
+      # nexa_auth and nothing else. The role is granted on exactly one database,
+      # so a cross-service query fails with a permission error rather than
+      # quietly succeeding (docs/RULES.md section 3).
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nexa_auth
+      SPRING_DATASOURCE_USERNAME: nexa_auth
+      SPRING_DATASOURCE_PASSWORD: ${AUTH_DB_PASSWORD:-nexa_auth_local_pw}
+      NEXA_AUTH_FRONTEND_BASE_URL: ${NEXA_AUTH_FRONTEND_BASE_URL:-http://localhost:5173}
+      # RS256 keys, supplied by the environment and never baked in. The empty
+      # defaults make the service fail at startup with a clear message rather
+      # than start insecurely (docs/RULES.md section 6).
+      NEXA_AUTH_JWT_PRIVATE_KEY: ${NEXA_AUTH_JWT_PRIVATE_KEY:-}
+      NEXA_AUTH_JWT_PUBLIC_KEY: ${NEXA_AUTH_JWT_PUBLIC_KEY:-}
+      NEXA_AUTH_JWT_ISSUER: ${NEXA_AUTH_JWT_ISSUER:-nexa-auth-service}
+      NEXA_AUTH_JWT_AUDIENCE: ${NEXA_AUTH_JWT_AUDIENCE:-nexaai-web}
+      # Cookie Secure is true, and must be everywhere except local HTTP.
+      NEXA_AUTH_COOKIE_SECURE: ${NEXA_AUTH_COOKIE_SECURE:-true}
+      NEXA_AUTH_COOKIE_SAME_SITE: ${NEXA_AUTH_COOKIE_SAME_SITE:-Strict}
+      # Google sign-in is off unless credentials are supplied.
+      NEXA_AUTH_GOOGLE_ENABLED: ${NEXA_AUTH_GOOGLE_ENABLED:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    depends_on: *data-depends
 
   # ===========================================================================
   # EDGE PROXY

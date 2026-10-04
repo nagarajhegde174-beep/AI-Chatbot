@@ -23,7 +23,7 @@
 -- see the claim, not just the verdict.
 --
 -- STATUS: this script has NOT been executed yet. There was no Docker daemon
--- available when Phase 0 was written. See docs/MEMORY.md section 6.1.
+-- available when Phase 0 was written. See docs/ARCHITECTURE.md section 6.1.
 -- =====================================================================
 
 \pset border 2

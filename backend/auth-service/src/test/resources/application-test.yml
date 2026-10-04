@@ -1,0 +1,51 @@
+# =====================================================================
+# Test profile.
+#
+# Overrides only what differs from application.yml. Every security-relevant
+# value is still supplied by the test harness; none is a real credential.
+#
+# The RS256 key pair is generated per run and injected by PostgresIntegrationTest.
+# It is never committed: a checked-in test key outlives the test.
+# =====================================================================
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 5
+  jpa:
+    hibernate:
+      # Flyway owns the schema. 'validate' proves the migration matches the
+      # entities, which is the check that catches a drifted mapping.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    # A checksum mismatch means the migration changed after it was applied. Fail
+    # rather than silently accepting a database and a codebase that disagree.
+    validate-on-migrate: true
+
+nexa:
+  auth:
+    frontend-base-url: http://localhost:5173
+    one-time:
+      # Never log a real token in tests. The link is read from a test listener
+      # instead, which exercises the same code path without writing a credential
+      # to a log file.
+      log-tokens: false
+    outbox:
+      enabled: false
+    google:
+      enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    root: WARN
+    com.nexaai.auth: INFO
+    org.springframework.security: WARN
+    org.springframework.test: WARN
+    org.flywaydb: INFO

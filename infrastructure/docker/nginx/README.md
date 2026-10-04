@@ -10,14 +10,14 @@ There are two files because they are **different images with different build con
 built from `frontend/nexa-ai-web`. Duplicating the API proxying rules is unfortunate, and it is
 still the lesser evil: sharing one file across two build contexts would mean one of the images
 depends on a file outside its own directory, which is exactly the coupling this project avoids
-([`../../../docs/DECISIONS.md`](../../../docs/DECISIONS.md) ADR-012).
+([`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) ADR-012).
 
 ## The blocks that matter most
 
 **`~ ^/api/v1/chat/.*/messages$`** — Server-Sent Events. `proxy_buffering off` is what makes
 streaming work. With buffering on, NGINX holds every token until the answer completes, and the
 user sees nothing and then everything
-([`../../../docs/DECISIONS.md`](../../../docs/DECISIONS.md) ADR-021). A regex location takes
+([`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) ADR-021). A regex location takes
 priority over a prefix location, so this matches before `/api/`.
 
 **`/api/v1/auth/`** — a stricter rate limit on credential endpoints. NGINX picks the longest
@@ -37,7 +37,7 @@ forgotten ([`../../../docs/SECURITY.md`](../../../docs/SECURITY.md) §13).
 ## STATUS: not yet loaded
 
 Neither file has been parsed by NGINX. There was no Docker daemon available when Phase 0 was
-written. See [`../../../docs/MEMORY.md`](../../../docs/MEMORY.md) §6.1.
+written. See [`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) §6.1.
 
 `nexaai.conf` also cannot start until Phase 3, because `upstream api-gateway` does not resolve
 while the gateway does not exist. That is why the `edge` service sits behind its own Compose

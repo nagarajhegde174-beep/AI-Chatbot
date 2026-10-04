@@ -1,0 +1,28 @@
+# =====================================================================
+# Local development profile.
+#
+# Overrides only what differs from application.yml. Every value is still
+# bound from an environment variable with a LOCAL placeholder; none is a real
+# credential.
+# =====================================================================
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+nexa:
+  auth:
+    cookie:
+      # Plain HTTP locally, so a Secure cookie would never be sent and login
+      # would appear to fail for no reason. Must be true everywhere else.
+      secure: false
+    one-time:
+      # Log verification and reset links instead of emailing them. There is no
+      # mail service in Phase 1. Refused outside a local profile.
+      log-tokens: true
+
+logging:
+  level:
+    com.nexaai.auth: DEBUG

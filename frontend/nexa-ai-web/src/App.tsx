@@ -3,7 +3,7 @@
  *
  * This is deliberately a shell, not a product screen. Phase 0 delivers
  * architecture, documentation and a buildable foundation; product screens are
- * built in their own phases (docs/TASKS.md).
+ * built in their own phases (docs/ARCHITECTURE.md).
  *
  * What this component does prove is that the frontend toolchain is real: React,
  * TypeScript strict, Bootstrap and SCSS all compile and render together. That is
@@ -68,7 +68,7 @@ function App() {
         <strong>Phase 0 &mdash; foundation.</strong> Architecture, documentation, service
         boundaries and a buildable toolchain. No business feature is implemented yet, and the
         service directories under <code>backend/</code> are empty on purpose &mdash; see{' '}
-        <code>docs/DECISIONS.md</code> ADR-015 and <code>docs/TASKS.md</code>.
+        <code>docs/ARCHITECTURE.md</code> sections 13&ndash;17.
       </div>
 
       <section className="card nexa-surface-raised mb-4">
