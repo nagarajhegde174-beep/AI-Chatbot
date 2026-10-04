@@ -10,7 +10,7 @@
 #
 # PHASE-AWARE BY DESIGN. Nothing here requires a service that does not exist.
 # The structural checks validate the plan; the content checks validate only what
-# is actually present. See docs/DECISIONS.md ADR-016.
+# is actually present. See docs/ARCHITECTURE.md section 13.
 # =====================================================================
 
 name: Rules
@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f backend/pom.xml ]; then
-            echo "::error::backend/pom.xml exists. There is deliberately no aggregator build. See docs/DULES.md section 1 and docs/DECISIONS.md ADR-012."
+            echo "::error::backend/pom.xml exists. There is deliberately no aggregator build. See docs/DULES.md section 1 and docs/ARCHITECTURE.md section 13."
             exit 1
           fi
           for p in backend/*/pom.xml; do
@@ -102,7 +102,7 @@ jobs:
             found=$(find "backend/$s" -type f \( -name '*.java' -o -name '*.kt' -o -name '*.class' \) 2>/dev/null | wc -l)
             if [ "$found" -ne 0 ]; then
               echo "::error::backend/$s contains $found source file(s), but no service is implemented yet."
-              echo "::error::Phase 0 forbids placeholder code. See docs/RULES.md section 10 and docs/DECISIONS.md ADR-015."
+              echo "::error::Phase 0 forbids placeholder code. See docs/RULES.md section 10 and docs/ARCHITECTURE.md section 13."
               find "backend/$s" -type f \( -name '*.java' -o -name '*.kt' \) | head -10
               exit 1
             fi
@@ -155,14 +155,32 @@ jobs:
             [nexa_subscription]=subscription-service
           )
           pattern='nexa_(auth|user|chat|document|rag|subscription)'
-          # README files are excluded on purpose: a service's README documents
-          # the boundary, so it may legitimately mention what it does NOT own.
           for db in "${!owner[@]}"; do
             svc="${owner[$db]}"
-            found=$(grep -rhoE "$pattern" "backend/$svc" \
-                     --include='*.yml' --include='*.yaml' --include='*.java' \
-                     --include='*.xml' --include='*.sql' --include='*.properties' \
-                     2>/dev/null | sort -u || true)
+            # README files are excluded on purpose: a service's README documents
+            # the boundary, so it may legitimately mention what it does NOT own.
+            #
+            # Isolation tests are excluded for the same reason, and this was found
+            # the hard way in Phase 1: DatabaseOwnershipIntegrationTest asserts that
+            # this service CANNOT reach nexa_chat, so it MUST name every foreign
+            # database. Failing that test would forbid the very test that proves the
+            # rule holds.
+            #
+            # The glob is *Ownership* rather than *OwnershipTest.java* because the class
+            # is DatabaseOwnershipIntegrationTest and the narrower glob silently failed
+            # to match it. An exclusion that does not exclude is worse than none: it
+            # looks like the rule is still being enforced.
+            found=$(
+              for f in $(grep -rlE "$pattern" "backend/$svc" \
+                           --include='*.yml' --include='*.yaml' --include='*.java' \
+                           --include='*.xml' --include='*.sql' --include='*.properties' \
+                           2>/dev/null); do
+                case "$f" in
+                  *.md|*Ownership*|*Isolation*) continue ;;
+                esac
+                grep -ohE "$pattern" "$f"
+              done | sort -u || true
+            )
             [ -z "$found" ] && continue
             if [ "$found" != "$db" ]; then
               echo "::error::$svc references a database it does not own."
@@ -313,10 +331,25 @@ jobs:
           # Nothing that looks like a live provider or payment credential. The
           # .github directory is excluded because the patterns must be written
           # out literally in order to search for them.
-          if grep -rniIE --exclude-dir=target --exclude-dir=node_modules --exclude-dir=.git \
-               --exclude-dir=.github --exclude='*.example' --exclude='*.md' \
-               '(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|rzp_live_[A-Za-z0-9]{10,}|ghp_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' . ; then
+          if grep -rniIE --exclude-dir=target --exclude-dir=node_modules --exclude-dir=dist \
+               --exclude-dir=.git --exclude-dir=.github --exclude='*.example' --exclude='*.md' \
+               '(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|rzp_live_[A-Za-z0-9]{10,}|ghp_[A-Za-z0-9]{30,})' . ; then
             echo "::error::a credential-shaped string is committed. See docs/RULES.md section 6."
+            exit 1
+          fi
+          # A PEM private key is a header, a base64 body and a footer. Requiring the
+          # BODY is what distinguishes a real key from the header literal that
+          # JwtService strips from a configured key at runtime.
+          #
+          # Phase 1 found this the honest way: a bare-header match flagged that
+          # string constant in JwtService as a leaked private key. A check that fires
+          # on correct code is a check that gets switched off, so the pattern is
+          # tightened rather than the code contorted to satisfy it.
+          if grep -rniIE --exclude-dir=target --exclude-dir=node_modules --exclude-dir=dist \
+               --exclude-dir=.git --exclude-dir=.github --exclude='*.md' \
+               -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' \
+               -e '[A-Za-z0-9+/]{60,}={0,2}' . | paste - - | grep -qi 'PRIVATE KEY'; then
+            echo "::error::a PEM private key appears to be committed. See docs/RULES.md section 6."
             exit 1
           fi
           # No .env file may be tracked; only .env.example.
@@ -343,23 +376,39 @@ jobs:
           set -euo pipefail
           # Looks in real code and configuration only.
           #
-          # Two exclusions are required, and both were found the hard way during
-          # Phase 0:
+          # Three exclusions are required, and each was found by running the check
+          # against real code rather than assuming it worked.
           #
           #   *.md  docs/RULES.md section 8 must be able to NAME the prohibited
           #         roles in order to forbid them.
           #   .github  this workflow must be able to name the pattern it searches
-          #         for. Without this, the check matches its own source and fails
+          #         for. Without this the check matches its own source and fails
           #         every run, which is the worst kind of broken check: one that
           #         trains people to ignore it.
+          #   comments  Role.java must be able to name the tiers it forbids in its
+          #         own documentation. Phase 1 added that sentence and the check
+          #         fired on it. Same reasoning as the two above: prose that
+          #         forbids a role cannot also be a use of it.
           #
-          # Both directories are also where the rule's own text legitimately
-          # lives, so neither is a place a role could actually be used.
-          if grep -rnIiE '(SUPER_ADMIN|SUPERADMIN|ROLE_MODERATOR|MODERATOR|ROLE_SUPPORT|ROLE_OWNER)' \
+          # So comment lines are stripped before matching, in every language.
+          #
+          # The pattern also drops a SINGLE-LINE block comment such as
+          # "/** SUPER_ADMIN is forbidden. */", which a naive leading-character match
+          # misses because the line starts with '/' rather than '*'. That was caught
+          # by a self-test in Phase 1 rather than by the real code, which is the
+          # point of the self-test.
+          strip_comments() {
+            grep -vE ':[0-9]+:[[:space:]]*(#|//|\*|<!--)' \
+              | grep -vE ':[0-9]+:[[:space:]]*/\*' \
+              | grep -vE '\*/[[:space:]]*$'
+          }
+
+          if grep -rnIiE '(SUPER_ADMIN|SUPERADMIN|ROLE_MODERATOR|ROLE_(MODERATOR|SUPPORT|OWNER))' \
                --include='*.java' --include='*.kt' --include='*.ts' --include='*.tsx' \
                --include='*.yml' --include='*.yaml' --include='*.sql' --include='*.json' \
                --exclude-dir=node_modules --exclude-dir=target --exclude-dir=dist \
-               --exclude-dir=.git --exclude-dir=.github --exclude='*.md' . ; then
+               --exclude-dir=.git --exclude-dir=.github --exclude='*.md' . \
+             | strip_comments | grep -E '(SUPER_ADMIN|SUPERADMIN|ROLE_MODERATOR|ROLE_(MODERATOR|SUPPORT|OWNER))' ; then
             echo "::error::a role outside USER and ADMIN appears. See docs/RULES.md section 8."
             exit 1
           fi
@@ -466,14 +515,34 @@ jobs:
       - name: R12 - the Compose file is valid
         run: docker compose -f infrastructure/docker-compose.yml --profile infra config --quiet
         # Parsed, not started. A service that does not exist has no image, so
-        # nothing here builds an image. See docs/DECISIONS.md ADR-016.
+        # nothing here builds an image. See docs/ARCHITECTURE.md section 13.
 
       - name: R13 - documentation is present and tracked
         run: |
           set -euo pipefail
-          for d in PRD ARCHITECTURE RULES DESIGN TASKS TEST_PLAN SECURITY DECISIONS SERVICE_CONTRACTS MEMORY; do
+          # The project has exactly SEVEN documents. A missing one is a failure,
+          # and so is an eighth. Docs/RULES.md section 12 forbids adding a
+          # TASKS, DECISIONS, MEMORY, ROADMAP or CHANGELOG file to avoid editing
+          # the right one, so this check has to enforce the boundary in both
+          # directions rather than only checking for presence.
+          required="ARCHITECTURE DESIGN PRD RULES SECURITY SERVICE_CONTRACTS TEST_PLAN"
+
+          for d in $required; do
             [ -f "docs/$d.md" ] || { echo "::error::missing docs/$d.md"; exit 1; }
           done
+
+          # Anything in docs/ that is not one of the seven.
+          actual=$(ls -1 docs/ 2>/dev/null | grep '\.md$' | sed 's/\.md$//' | sort)
+          expected=$(printf '%s\n' $required | sort)
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::docs/ must contain exactly these seven documents:"
+            printf '%s\n' $required | sed 's/^/  /'
+            echo "::error::found instead:"
+            printf '%s\n' "$actual" | sed 's/^/  /'
+            echo "::error::See docs/RULES.md section 12."
+            exit 1
+          fi
+
           # The single most important line in .gitignore. An earlier draft
           # ignored docs/ itself, which would have silently excluded every
           # document from the repository while the files still existed on disk.
@@ -481,7 +550,7 @@ jobs:
             echo "::error::.gitignore ignores docs/. Documentation is source code and must be tracked. See docs/RULES.md section 12."
             exit 1
           fi
-          echo "ok: all ten documents exist and docs/ is tracked"
+          echo "ok: exactly seven documents, and docs/ is tracked"
 
       - name: R14 - the frontend has no secrets and no prohibited stack
         run: |
@@ -537,7 +606,7 @@ jobs:
               echo "> none. This is a deliberate, documented state, not a skipped check."
               echo ">"
               echo "> The Compose stack and the database isolation scripts are also unverified:"
-              echo "> see docs/MEMORY.md section 6.1."
+              echo "> see docs/ARCHITECTURE.md section 17."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "NOTICE: 0 of 8 services implemented. Rule checks only; no application code was built or tested."
           else

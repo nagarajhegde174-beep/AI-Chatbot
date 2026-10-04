@@ -3,10 +3,10 @@
 **Status: planned. This directory contains no code.**
 
 Phase 0 creates the service boundaries. `chat-service` is implemented in **Phase 5**
-([`../../docs/TASKS.md`](../../docs/TASKS.md)).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)).
 
 Nothing here is a placeholder controller or a stub
-([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
 
 ---
 
@@ -81,6 +81,6 @@ Every internal call needs a timeout. An unbounded call is a cascading failure
 
 Read [`../../docs/RULES.md`](../../docs/RULES.md), then
 [`../../docs/SERVICE_CONTRACTS.md`](../../docs/SERVICE_CONTRACTS.md) §7, then
-[`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-017 and ADR-021.
+[`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-017 and ADR-021.
 
 An interrupted stream must be persisted as **incomplete**, never as a whole answer.

@@ -3,10 +3,10 @@
 **Status: planned. This directory contains no code.**
 
 Phase 0 creates the service boundaries. `api-gateway` is **implemented in Phase 3**, when token
-validation and the route table are wired ([`../../docs/TASKS.md`](../../docs/TASKS.md)).
+validation and the route table are wired ([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)).
 
 Nothing here is a placeholder controller or a stub
-([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
 
 ---
 
@@ -54,7 +54,7 @@ lives in one place
 - **Hold business logic.** A route that computes something belongs in the service that owns the
   data
 - Be the only authorisation check. Each service authorises independently, because an internal
-  network is not a trust boundary ([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-014)
+  network is not a trust boundary ([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-014)
 - Retry a non-idempotent `POST`. A retried message bills the user twice
 - Use `CORS: *` with credentials
 - Depend on any other service's code
@@ -74,7 +74,7 @@ verification, Resilience4j.
 
 Read [`../../docs/RULES.md`](../../docs/RULES.md), then
 [`../../docs/SERVICE_CONTRACTS.md`](../../docs/SERVICE_CONTRACTS.md) §4, then
-[`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-014 and ADR-018.
+[`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-014 and ADR-018.
 
 Algorithm confusion must be rejected: `alg` must be exactly `RS256`, and neither `alg: none` nor
 an HS256 token signed with the public key may ever be accepted.

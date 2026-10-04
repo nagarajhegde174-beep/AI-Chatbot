@@ -2,10 +2,10 @@
 
 **Phase 0: no code exists here.** Each directory holds a README describing its boundary, port,
 database and planned responsibility
-([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
 
 There is deliberately **no `backend/pom.xml`** and no aggregator of any kind
-([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-012).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-012).
 
 ## The services
 

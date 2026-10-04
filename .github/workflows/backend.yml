@@ -1,7 +1,7 @@
 # =====================================================================
 # Backend CI
 #
-# PHASE-AWARE BY DESIGN. See docs/DECISIONS.md ADR-016.
+# PHASE-AWARE BY DESIGN. See docs/ARCHITECTURE.md decision 016.
 #
 # This workflow discovers which services actually have a pom.xml and builds
 # exactly those, one job per service, each in its own working directory with no
@@ -163,7 +163,7 @@ jobs:
           echo "# and documentation are established, and no business code is"
           echo "# written ahead of its phase."
           echo "#"
-          echo "# See docs/RULES.md section 10 and docs/DECISIONS.md ADR-015."
+          echo "# See docs/RULES.md section 10 and docs/ARCHITECTURE.md decision 015."
           echo "#"
           echo "# This job is NOT a pass on application code. It is an honest"
           echo "# statement that there is none to test. See docs/RULES.md s.11."

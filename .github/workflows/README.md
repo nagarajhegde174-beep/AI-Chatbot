@@ -23,7 +23,7 @@ Phase 0 CI. Three workflows, each with one job.
 - Rule checks that describe structure validate the **plan**. Rule checks that describe content
   validate only what is **present**.
 
-This is [ADR-016](../../docs/DECISIONS.md). The alternative — a hardcoded matrix of eight
+This is [ADR-016](../../docs/ARCHITECTURE.md). The alternative — a hardcoded matrix of eight
 services — is guaranteed red until Phase 12, and the only way to make it green is eight
 `--exit-zero` steps, which is worse than a red pipeline.
 
@@ -77,7 +77,7 @@ an empty service that pretends to exist, and a half-built one that slips through
 ## What is **not** verified in CI
 
 Stated here so it is not mistaken for a pass
-([`../../docs/MEMORY.md`](../../docs/MEMORY.md) §6.1):
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) §6.1):
 
 | | |
 |---|---|

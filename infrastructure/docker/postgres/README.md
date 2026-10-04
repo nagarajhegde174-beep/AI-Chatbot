@@ -5,7 +5,7 @@ and its own role, and a role is granted on exactly one database.
 
 This is a local development convenience. Splitting into separate instances is a deployment
 decision, not an architecture change — nothing in the application code knows they share a host
-([`../../../docs/DECISIONS.md`](../../../docs/DECISIONS.md) ADR-002).
+([`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) ADR-002).
 
 ## Files
 
@@ -41,7 +41,7 @@ service's database. Two things enforce it:
    query fails loudly instead of quietly succeeding.
 2. **Ownership of the schema.** Each service's Flyway migrations own that database's DDL, so no
    one else can alter it. A central migration runner is rejected for exactly this reason: it
-   would need every service's credentials ([`../../../docs/DECISIONS.md`](../../../docs/DECISIONS.md) ADR-019).
+   would need every service's credentials ([`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) ADR-019).
 
 ## Verify the isolation
 
@@ -72,7 +72,7 @@ no check.
 
 Neither script has been run. There was no Docker daemon available when Phase 0 was written, so
 both files have been reviewed but never executed. See
-[`../../../docs/MEMORY.md`](../../../docs/MEMORY.md) §6.1.
+[`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) §6.1.
 
 Running these two scripts is the first task of Phase 1.
 

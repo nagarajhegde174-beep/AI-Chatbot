@@ -18,7 +18,7 @@ buildable frontend toolchain.
 
 **No business functionality exists yet, by rule.** The eight service directories under
 `backend/` are empty apart from a README stating each boundary
-([`docs/RULES.md`](docs/RULES.md) §10, [`docs/DECISIONS.md`](docs/DECISIONS.md) ADR-015).
+([`docs/RULES.md`](docs/RULES.md) §10, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ADR-015).
 
 | | |
 |---|---|
@@ -62,11 +62,11 @@ the gateway reports its routes at `GET /internal/v1/gateway/info`.
 | [docs/RULES.md](docs/RULES.md) | Binding development rules and prohibitions |
 | [docs/DESIGN.md](docs/DESIGN.md) | Frontend architecture and visual system |
 | [docs/SERVICE_CONTRACTS.md](docs/SERVICE_CONTRACTS.md) | REST endpoints, DTO boundaries, Kafka topics and event ownership |
-| [docs/TASKS.md](docs/TASKS.md) | The Phase 0–12 plan and current status |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The Phase 0–12 plan and current status |
 | [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Test layers, per-phase plan, isolation and security matrices |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, controls, secret handling, known gaps |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Architectural decision records with reasoning and consequences |
-| [docs/MEMORY.md](docs/MEMORY.md) | **Read this first.** Current state, what exists, what to do next |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architectural decision records with reasoning and consequences |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | **Read this first.** Current state, what exists, what to do next |
 
 ---
 
@@ -208,7 +208,7 @@ Phase 0 is a foundation, and it is honest about what has not been proven.
 
 | Gap | Detail |
 |---|---|
-| **Docker unavailable** | The Compose stack, both SQL scripts, `redis.conf` and `nexaai.conf` have **never been run**. The Compose file is validated by parsing only. See [`docs/MEMORY.md`](docs/MEMORY.md) §6.1. |
+| **Docker unavailable** | The Compose stack, both SQL scripts, `redis.conf` and `nexaai.conf` have **never been run**. The Compose file is validated by parsing only. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6.1. |
 | **No backend build** | No `pom.xml`, so there is nothing for `mvn verify` to do. `backend.yml` reports this explicitly rather than passing silently. |
 | **Versions unverified** | Spring Boot and Spring AI versions are **not** resolved against Maven Central. Phase 1 must pin real, existing versions. |
 | **Documentation ahead of code** | The contracts specify endpoints and schemas that do not exist. Treat them as a specification to validate, not as proven truth. |
@@ -223,19 +223,19 @@ they still catch real violations.
 
 Validating the checks themselves found five defects, including a `.gitignore` line that would
 have excluded all ten documents from the repository. All are fixed; see
-[`docs/MEMORY.md`](docs/MEMORY.md) §5.1.
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §5.1.
 
 ---
 
 ## Contributing
 
 1. Read [`docs/RULES.md`](docs/RULES.md) first. It is not advisory.
-2. Work only in the current phase of [`docs/TASKS.md`](docs/TASKS.md).
+2. Work only in the current phase of [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 3. Inspect existing code before changing it, and preserve correct implementation.
 4. A contract change updates [`docs/SERVICE_CONTRACTS.md`](docs/SERVICE_CONTRACTS.md) in the
-   same change. A change of direction adds an entry to [`docs/DECISIONS.md`](docs/DECISIONS.md).
+   same change. A change of direction adds an entry to [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 5. After every phase: build, test, fix genuine errors, update the docs, update
-   `docs/MEMORY.md` and `docs/TASKS.md`, report what was completed and what remains, then stop.
+   `docs/ARCHITECTURE.md` and `docs/ARCHITECTURE.md`, report what was completed and what remains, then stop.
 6. Never hide a failure to make CI green. A red pipeline that means something is worth more than
    a green one that does not.
 

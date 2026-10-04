@@ -3,10 +3,10 @@
 **Status: planned. This directory contains no code.**
 
 Phase 0 creates the service boundaries. `user-service` is implemented in **Phase 2**
-([`../../docs/TASKS.md`](../../docs/TASKS.md)).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)).
 
 Nothing here is a placeholder controller or a stub
-([`../../docs/DECISIONS.md`](../../docs/DECISIONS.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-015, [`../../docs/RULES.md`](../../docs/RULES.md) §10).
 
 ---
 

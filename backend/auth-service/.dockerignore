@@ -1,0 +1,29 @@
+# Build context excludes. Anything listed here is unavailable to `docker build`.
+
+target/
+.mvn/
+*.jar
+*.war
+
+# Secrets. .env is gitignored, but excluding it here means it cannot be read
+# from the build context either.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Not needed to build a jar.
+.git
+.gitignore
+.github
+.idea
+.vscode
+*.md
+README.md
+Dockerfile
+.dockerignore

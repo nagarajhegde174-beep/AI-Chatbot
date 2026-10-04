@@ -4,7 +4,7 @@ Local development infrastructure for NexaAI: PostgreSQL with pgvector, Redis, Ka
 mode, and an NGINX edge.
 
 **Phase 0: only these four exist.** The eight backend services are added here as they are
-implemented, each in its own phase. See [`../../docs/MEMORY.md`](../../docs/MEMORY.md).
+implemented, each in its own phase. See [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md).
 
 ---
 
@@ -109,4 +109,4 @@ Planned: frontend `8088`, gateway `8080`, services `8081`–`8087`.
 
 Everything in this directory is reviewed but unverified at runtime. Starting the stack and
 running both SQL scripts is the first task of Phase 1
-([`../../docs/MEMORY.md`](../../docs/MEMORY.md) §6.1).
+([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) §6.1).

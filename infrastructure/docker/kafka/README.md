@@ -48,12 +48,12 @@ The authoritative list, with partitions, keys, consumers and payload schemas, is
 
 Topic creation is left to each service's `NewTopic` beans rather than to an external script,
 because the producer is the party accountable for its schema
-([`../../../docs/DECISIONS.md`](../../../docs/DECISIONS.md) ADR-020).
+([`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) ADR-020).
 
 ## When topics are actually created
 
 **No topic exists yet.** No service is implemented, so no producer has declared anything
-([`../../../docs/TASKS.md`](../../../docs/TASKS.md)). The topic list in the contracts document is
+([`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md)). The topic list in the contracts document is
 a specification, not a description of a running cluster.
 
 ## Useful commands
@@ -89,4 +89,4 @@ cluster, which is the expected behaviour for a local development broker.
 
 This configuration has not been run. There was no Docker daemon available when Phase 0 was
 written. The Compose file is validated by parsing only
-([`../../../docs/MEMORY.md`](../../../docs/MEMORY.md) §6.1).
+([`../../../docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) §6.1).
