@@ -5,27 +5,20 @@
 #   docker compose up -d                      everything that exists
 #
 # =====================================================================
-#  PHASE 0 SCOPE.
+#  PHASE 2 SCOPE.
 #
-#  This file starts PostgreSQL, Redis and Kafka, plus an optional NGINX edge.
-#  It does NOT define the eight backend services, because none of them exist
-#  yet. Each service is added here in its own phase, built from its own
-#  directory.
+#  This file starts PostgreSQL, Redis and Kafka, plus an optional NGINX edge,
+#  and defines the backend services that exist as of Phase 2: auth-service,
+#  user-service and api-gateway.
 #
-#  Those service entries are intentionally absent rather than present and
-#  commented out. A commented service block looks like configuration, and the
-#  first person to uncomment it would be running an image that does not exist.
-#  See docs/ARCHITECTURE.md decision 015 and docs/RULES.md section 10.
+#  The other five services are added in their own phases, as each is
+#  implemented. A commented-out service block would look like configuration, and
+#  the first person to uncomment it would be running an image that does not
+#  exist. See docs/ARCHITECTURE.md decision 015 and docs/RULES.md section 10.
 # =====================================================================
 #
-# ARCHITECTURE, not a monolith: every backend entry that gets added here is a
-# separate image built from its own directory, with its own port and its own
-# database credentials.
-#
-# Phase 1 added auth-service. The other seven are added in their own phases, as
-# each is implemented. A commented-out service block would look like
-# configuration, and the first person to uncomment it would be running an image
-# that does not exist.
+# ARCHITECTURE, not a monolith: every backend entry is a separate image built
+# from its own directory, with its own port and its own database credentials.
 #
 # There is NO ZooKeeper service in this file, and there must never be one.
 # Kafka runs in KRaft mode. ZooKeeper is prohibited by docs/RULES.md section 4.
@@ -230,6 +223,85 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     depends_on: *data-depends
 
+  # ----------------------------------------------------------- user-service --
+  # Owns nexa_user and nothing else. Knows no password and holds no hash.
+  #
+  # Its role is granted on nexa_user alone, so it cannot read nexa_auth: a
+  # cross-service query fails with a permission error rather than quietly
+  # succeeding (docs/RULES.md section 3). It learns that an account exists from
+  # auth.user.registered.v1 and verifies tokens with the PUBLIC key only.
+  user-service:
+    <<: *service-defaults
+    profiles: [backend]
+    build:
+      context: ../backend/user-service
+      dockerfile: Dockerfile
+    image: nexaai/user-service:0.1.0-SNAPSHOT
+    container_name: nexa-user-service
+    ports:
+      - "${USER_SERVICE_PORT:-8082}:8082"
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8082
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nexa_user
+      SPRING_DATASOURCE_USERNAME: nexa_user
+      SPRING_DATASOURCE_PASSWORD: ${USER_DB_PASSWORD:-nexa_user_local_pw}
+      # PUBLIC key only. There is no private-key variable for this service, and
+      # adding one would be a privilege escalation: it could then mint a token
+      # for itself.
+      NEXA_USER_JWT_PUBLIC_KEY: ${NEXA_AUTH_JWT_PUBLIC_KEY:-}
+      NEXA_USER_JWT_ISSUER: ${NEXA_AUTH_JWT_ISSUER:-nexa-auth-service}
+      NEXA_USER_JWT_AUDIENCE: ${NEXA_AUTH_JWT_AUDIENCE:-nexaai-web}
+      NEXA_USER_CONSUMER_GROUP: user-profile-events
+      # Off until Subscription Service exists in Phase 9. Until then the admin
+      # view reports usage as unavailable rather than as zero.
+      NEXA_USER_CLIENT_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+
+  # ------------------------------------------------------------ api-gateway --
+  # The platform's only public entry point. NO DATABASE, NO KAFKA.
+  #
+  # It receives the RS256 PUBLIC key and has no signing key, so it cannot issue
+  # a token. It contains no business logic: it authenticates, applies edge
+  # policy and routes.
+  api-gateway:
+    <<: *service-defaults
+    profiles: [backend]
+    build:
+      context: ../backend/api-gateway
+      dockerfile: Dockerfile
+    image: nexaai/api-gateway:0.1.0-SNAPSHOT
+    container_name: nexa-api-gateway
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8080
+      NEXA_GATEWAY_JWT_PUBLIC_KEY: ${NEXA_AUTH_JWT_PUBLIC_KEY:-}
+      NEXA_GATEWAY_JWT_ISSUER: ${NEXA_AUTH_JWT_ISSUER:-nexa-auth-service}
+      NEXA_GATEWAY_JWT_AUDIENCE: ${NEXA_AUTH_JWT_AUDIENCE:-nexaai-web}
+      # Upstream addresses.
+      NEXA_AUTH_SERVICE_URL: http://auth-service:8081
+      NEXA_USER_SERVICE_URL: http://user-service:8082
+      # CORS has NO wildcard default: an empty list stops the gateway at startup.
+      # Defaulting to '*' publishes a browser-readable API to every origin.
+      NEXA_GATEWAY_CORS_ALLOWED_ORIGIN_PATTERNS: ${NEXA_GATEWAY_CORS_ALLOWED_ORIGIN_PATTERNS:-http://localhost:5173}
+      NEXA_GATEWAY_CORS_ALLOW_CREDENTIALS: "true"
+    # NO depends_on postgres: this service has no database and must never be
+    # given one. A gateway with a datasource is a gateway that will be tempted
+    # to read somebody else's tables.
+    depends_on:
+      auth-service:
+        condition: service_started
+      user-service:
+        condition: service_started
+
   # ===========================================================================
   # EDGE PROXY
   # ===========================================================================
@@ -237,9 +309,7 @@ services:
   # Optional. NGINX with the rate-limit zones and security headers from
   # infrastructure/docker/nginx/nexaai.conf, for exercising the real ingress path.
   #
-  # The `api-gateway` upstream cannot resolve until the gateway exists in Phase
-  # 3, so this service is expected to fail to start before then. That is why it
-  # lives behind its own `edge` profile rather than the default set.
+  # The `api-gateway` upstream now resolves, so this can start alongside it.
   edge:
     profiles: [edge]
     image: nginx:1.27-alpine

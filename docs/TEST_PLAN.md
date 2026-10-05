@@ -96,21 +96,46 @@ Each phase adds the listed layers. A phase is not done until its criteria in
 - [ ] Contract: `auth.user.registered.v1` schema matches the registered event
 - [ ] E2E: register → login → access an authenticated route
 
-### Phase 2 — User Service
-- [ ] Unit: profile updates, preference validation
-- [ ] Slice: profile and admin controllers
-- [ ] Integration: profile created from the event, exactly once
-- [ ] **Isolation: user A cannot read, update or delete user B's profile**
-- [ ] **Authorisation: a USER token is rejected on every `/api/v1/admin/**` route**
-- [ ] Idempotency: the same registration event replayed creates one profile
-- [ ] Contract: profile shape matches what Auth and Chat expect
+### Phase 2 — User Service + API Gateway
+
+**User Service. All done — 120 tests.**
+
+- [x] Unit: profile updates, preference validation, the status lifecycle
+- [x] Integration: profile created from the event, exactly once
+- [x] **Isolation: user A cannot read, update or delete user B's profile**
+- [x] **Authorisation: a USER token is rejected on every `/api/v1/admin/**` route**
+- [x] Idempotency: the same registration event replayed creates one profile
+- [x] **Isolation: the `nexa_user` role cannot connect to another service's database at all**
+- [x] Schema: `nexa_user` contains no credential column of any kind
+- [x] A self-service request carrying `role`, `accountStatus` or `email` does not change them
+- [x] A suspension without a reason is refused
+- [x] `DEACTIVATED` is terminal: reactivation is refused
+- [x] The caller's own status history omits the acting administrator; the admin view keeps it
+- [x] Usage reports "unavailable", never zero, while Subscription Service is absent
+
+**API Gateway. All done — 49 tests.**
+
+- [x] Routing and prefix rewriting, asserted against a recording upstream over real HTTP
+- [x] Unsigned, tampered, expired, wrong-issuer, wrong-audience and foreign-key tokens rejected
+- [x] **Algorithm confusion: an HS256 token signed with the RSA public key grants nothing**
+- [x] **A client-supplied `X-User-*` header is stripped even when a valid token is also sent**
+- [x] **The bearer token is not forwarded to the upstream**
+- [x] Correlation id present on every response, propagated, and sanitised if not a UUID
+- [x] CORS allows a listed origin and refuses an unlisted one
+- [x] Unroutable paths return a JSON 404, not the framework's HTML error page
+- [x] Auth Service's `/internal/**` is not routed
+- [ ] `/internal/**` and `/actuator/**` unreachable externally — **partly done.** Auth Service's
+      internal surface is not routed and other actuator endpoints are closed; `/actuator/health`
+      is deliberately public for the container healthcheck.
+
+**Not done in Phase 2, carried to Phase 3:** rate limits, request-size limits, a service timeout
+producing a 504 rather than a hang, JWKS, and `/.well-known/jwks.json`.
 
 ### Phase 3 — Gateway and auth UI
-- [ ] Gateway: unsigned, tampered, expired and wrong-issuer tokens rejected at the edge
-- [ ] Gateway: correlation id present on every response and propagated to every service
-- [ ] Gateway: `/internal/**` and `/actuator/**` unreachable externally
+- [ ] Gateway: `/internal/**` unreachable externally (see the note above)
 - [ ] Gateway: a service timeout produces a 504, not a hang
-- [ ] Gateway: CORS rejects an unlisted origin
+- [ ] Gateway: rate limits and request-size limits
+- [ ] Gateway: `/.well-known/jwks.json` public key set for external verifiers
 - [ ] Frontend: component tests for auth state transitions
 - [ ] Frontend: E2E sign in → refresh on expiry → sign out
 
@@ -321,6 +346,37 @@ integration tests over coverage percentages.
 2. **Security state written in the same transaction as the rejection it causes is state that
    never persists.** Anything that must outlive a failed request — a lockout counter, a
    revocation — needs its own `REQUIRES_NEW` boundary in a separate bean.
+
+### 7.2b Defects found in Phase 2, and what they teach
+
+Every one of these was invisible to inspection. Each was found by a test asserting a specific
+property, which is the whole argument for writing tests that state what must be true rather than
+tests that execute what exists.
+
+| Defect | Consequence had it shipped |
+|---|---|
+| `AuthenticatedCaller.getPrincipal()` returned `this` | `AbstractAuthenticationToken.getName()` sees an `AuthenticatedPrincipal` and calls `getName()` on it, which is itself → **`StackOverflowError` on every authenticated request** |
+| An unmatched URL fell through to the catch-all `Exception` handler | Every typo, stale bookmark and scanner probe returned **500 instead of 404**, sending operators hunting a fault that did not exist |
+| The correlation filter validated the inbound id but forwarded the original header | The attacker's string still reached **every downstream service's logs**. Sanitising the response while leaving the request dirty is not sanitising |
+| The gateway used `StripPrefix=1` for `/api/auth/**` | Yields `/auth/login`; Auth Service answers on `/api/v1/auth/**`, so **every auth route 404s at the upstream** — which reads like a broken service, not a broken route |
+| `spring-boot-starter-oauth2-resource-server` was on the gateway classpath | Its auto-configured chain ran **before** the gateway's filters and rejected everything with an **empty-body 401**, so the gateway 401'd valid requests and its own verification never executed |
+| Gateway routes were configured under `spring.cloud.gateway.*` | Gateway 5 renamed the prefix. The old one is **silently ignored**: the app starts, health is green, there are **zero routes** |
+| `String.valueOf(exchange.getAttribute(...))` in the gateway | `getAttribute` is `<T> T`, so javac infers `T = char[]` and binds the `valueOf(char[])` overload. Compiles; **throws `ClassCastException` at runtime**, so every rejection returned **500 instead of 401** |
+| `pref_updated_at` and `updated_at` both mapped to `updated_at` | The embedded preferences and the profile collided on one column. Caught by `ddl-auto: validate`, which is why that setting is load-bearing |
+| `preferences.updated_at` check constraint listed `'light','dark','system'` while the enum stores `LIGHT,DARK,SYSTEM` | **The first insert of a preference would have failed.** Found by writing the constraint out and reading it against the enum |
+
+**Three lessons worth carrying forward.**
+
+1. **Assert on what crossed the wire, not on what the component believes it did.** A gateway
+   that strips a header internally while forwarding it intact passes any assertion made against
+   its own state. The recording upstream exists for exactly this.
+2. **A silent-ignore failure mode is the expensive kind.** The gateway prefix and the
+   resource-server starter both produced a running, healthy application that answered every
+   request wrongly. Neither raised an error. Configuration that is *accepted but not applied* is
+   worse than configuration that is rejected.
+3. **Read the constraint and the enum side by side.** `CHECK (theme IN ('light','dark','system'))`
+   beside an `enum` that serialises to `LIGHT` is a defect that no compiler finds and that only
+   surfaces on the first real write.
 
 ### 7.3 CI rule checks are themselves tested
 

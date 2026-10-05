@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  api-gateway — an INDEPENDENT Spring Boot application.
+
+  The single public entry point for NexaAI. It authenticates, routes, and
+  applies edge policy. It contains NO business logic.
+
+  There is deliberately no <relativePath> parent: the parent is
+  spring-boot-starter-parent from Maven Central, never a POM inside this
+  repository. That is what makes the service independently buildable, and CI
+  asserts it (docs/RULES.md section 1, docs/ARCHITECTURE.md section 13).
+
+  This POM declares NO dependency on another NexaAI service. The gateway
+  authenticates a token; it does not implement authentication.
+  ============================================================================
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.1.1</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.nexaai</groupId>
+  <artifactId>api-gateway</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <name>api-gateway</name>
+  <description>NexaAI API Gateway — entry point, authentication filtering and routing. Owns no database.</description>
+
+  <properties>
+    <java.version>21</java.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!--
+      Spring Cloud release train for Spring Boot 4.x. Resolved from Maven
+      Central rather than assumed: Spring Cloud and Spring Boot versions must
+      move together, and guessing produces a runtime failure that looks like a
+      code bug.
+    -->
+    <spring-cloud.version>2025.1.3</spring-cloud.version>
+    <jjwt.version>0.12.6</jjwt.version>
+    <springdoc.version>2.8.13</springdoc.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!--
+      Spring Cloud Gateway 5 renamed the starter. In 4.x it was
+      spring-cloud-starter-gateway; in 5.x the reactive server starter is
+      spring-cloud-starter-gateway-server-webflux. Using the old name resolves
+      to a version that is not compatible with Boot 4.
+    -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
+    </dependency>
+
+    <!--
+      The gateway verifies tokens itself rather than delegating to Auth Service.
+      A synchronous network call on every request would make Auth Service a
+      hard dependency of the whole platform and would put it on the critical
+      path of every single request (docs/ARCHITECTURE.md section 13, ADR-014).
+
+      NOTE: spring-boot-starter-oauth2-resource-server is deliberately NOT a
+      dependency, and this comment records why, because it looks like an
+      obvious thing to add and adding it breaks the gateway.
+
+      It auto-configures a SecurityWebFilterChain that runs BEFORE the gateway's
+      GlobalFilters and rejects any request it cannot authenticate in ITS expected
+      format, with an empty 401 body. The observable symptom is a gateway that
+      returns 401 to every request, including ones carrying valid tokens, while
+      its own verification never executes. Empty-body 401s are the tell.
+
+      Authentication here is JwtAuthenticationGlobalFilter, with the public key
+      only. The gateway holds no signing key and cannot issue a token; that is the
+      design, and the auto-configuration works directly against it.
+    -->
+    <!-- JWT verification only. The gateway never signs anything. -->
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-api</artifactId>
+      <version>${jjwt.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-impl</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-jackson</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!-- OpenAPI for the gateway's own operational surface. -->
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+      <version>${springdoc.version}</version>
+    </dependency>
+
+    <!-- ==== test ==== -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.projectreactor</groupId>
+      <artifactId>reactor-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

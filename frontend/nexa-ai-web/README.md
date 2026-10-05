@@ -6,8 +6,8 @@ The NexaAI web client. React + Vite + TypeScript + Bootstrap 5 + SCSS, Lucide ic
 stack compiles, type-checks, lints and builds. Product screens arrive in Phase 10
 ([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)), with the auth screens in Phase 3.
 
-See [`../../docs/DESIGN.md`](../../docs/DESIGN.md) for the frontend architecture and visual
-system.
+See [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) section 9 for the frontend architecture and
+visual system.
 
 ---
 
@@ -74,7 +74,7 @@ it is clutter ([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-01
 4. **Streaming must not be buffered.** Every proxy hop needs `proxy_buffering off`
    ([`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) ADR-021).
 5. **Accessibility is part of done.** Semantic elements, visible focus, labelled controls, AA
-   contrast in both themes ([`../../docs/DESIGN.md`](../../docs/DESIGN.md) §3.4).
+   contrast in both themes (ARCHITECTURE.md section 9.3).
 
 ---
 

@@ -83,11 +83,11 @@ jobs:
           # asserts the theme reached the output bundle, which is the failure
           # mode that would otherwise only be noticed by looking at the page.
           if ! grep -q -- '--nexa-accent' dist/assets/*.css; then
-            echo "::error::the design tokens are missing from the built CSS. The theme pipeline did not run. See docs/DESIGN.md section 3.2."
+            echo "::error::the design tokens are missing from the built CSS. The theme pipeline did not run. See docs/ARCHITECTURE.md section 9.3."
             exit 1
           fi
           if ! grep -q -- '--bs-body-bg' dist/assets/*.css; then
-            echo "::error::Bootstrap variable overrides are missing from the built CSS. See docs/DESIGN.md section 3.2."
+            echo "::error::Bootstrap variable overrides are missing from the built CSS. See docs/ARCHITECTURE.md section 9.3."
             exit 1
           fi
           echo "ok: the theme reached the built bundle"
@@ -106,12 +106,12 @@ jobs:
       - name: Bundle size against the budget
         run: |
           set -euo pipefail
-          # docs/DESIGN.md section 8: initial JS under 200 kB gzip.
+          # docs/ARCHITECTURE.md section 9: initial JS under 200 kB gzip.
           js=$(find dist/assets -name '*.js' -exec gzip -c {} \; | wc -c)
           kb=$((js / 1024))
           echo "JavaScript, gzipped: ${kb} kB"
           if [ "$js" -gt $((200 * 1024)) ]; then
-            echo "::error::JavaScript bundle is ${kb} kB gzipped, over the 200 kB budget. See docs/DESIGN.md section 8."
+            echo "::error::JavaScript bundle is ${kb} kB gzipped, over the 200 kB budget. See docs/ARCHITECTURE.md section 9."
             exit 1
           fi
           echo "ok: within the bundle budget"

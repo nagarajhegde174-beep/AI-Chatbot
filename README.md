@@ -22,7 +22,7 @@ buildable frontend toolchain.
 
 | | |
 |---|---|
-| Backend | Java 21 · Spring Boot 4.x · Maven — **planned, no code yet** |
+| Backend | Java 21 · Spring Boot 4.x · Maven — **3 services implemented, 256 tests** |
 | AI | Spring AI 2.x · OpenAI · Google Gemini · Groq/LLaMA — **planned** |
 | Data | PostgreSQL 17 + pgvector · Redis cache — **configured, not yet run** |
 | Messaging | Apache Kafka 4 in **KRaft** mode, **no ZooKeeper** — **configured, not yet run** |
@@ -39,7 +39,7 @@ tests and Dockerfile. **No service reads another service's database.**
 
 | Service | Port | Responsibility | Database | Phase |
 |---|:--:|---|---|:--:|
-| [api-gateway](backend/api-gateway) | 8080 | Public entry point, routing edge | *none* | 3 |
+| [api-gateway](backend/api-gateway) | 8080 | Public entry point, routing edge | *none* | 2 |
 | [auth-service](backend/auth-service) | 8081 | Credentials, tokens, account status | `nexa_auth` | 1 |
 | [user-service](backend/user-service) | 8082 | Profile, preferences, administration | `nexa_user` | 2 |
 | [chat-service](backend/chat-service) | 8083 | Conversations, memory, streamed relay | `nexa_chat` | 5 |
@@ -60,12 +60,10 @@ the gateway reports its routes at `GET /internal/v1/gateway/info`.
 | [docs/PRD.md](docs/PRD.md) | Purpose, users, USER and ADMIN functionality, AI chat, multi-model, memory, documents, RAG, subscriptions, usage, analytics, security |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Service responsibilities, REST and Kafka communication, data ownership, Redis, RAG, AI, payments, frontend, deployment |
 | [docs/RULES.md](docs/RULES.md) | Binding development rules and prohibitions |
-| [docs/DESIGN.md](docs/DESIGN.md) | Frontend architecture and visual system |
 | [docs/SERVICE_CONTRACTS.md](docs/SERVICE_CONTRACTS.md) | REST endpoints, DTO boundaries, Kafka topics and event ownership |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The Phase 0–12 plan and current status |
+| [docs/MEMORY.md](docs/MEMORY.md) | What is true right now: what exists, what does not, and the rules not to break |
 | [docs/TEST_PLAN.md](docs/TEST_PLAN.md) | Test layers, per-phase plan, isolation and security matrices |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, controls, secret handling, known gaps |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architectural decision records with reasoning and consequences |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | **Read this first.** Current state, what exists, what to do next |
 
 ---
@@ -145,8 +143,8 @@ PostgreSQL `5432`, Redis `6379`, Kafka `9092` external / `29092` internal.
 
 ```
 NexaAI/
-├── docs/                      ten documents: PRD, architecture, rules, design, contracts,
-│                              tasks, tests, security, decisions, memory
+├── docs/                      seven documents: PRD, architecture, rules, contracts,
+│                              tests, security, memory
 ├── backend/
 │   ├── api-gateway/           8080  routing edge
 │   ├── auth-service/          8081  identity and tokens
@@ -222,7 +220,7 @@ bundle contains no credential. The ZooKeeper and payment checks include self-tes
 they still catch real violations.
 
 Validating the checks themselves found five defects, including a `.gitignore` line that would
-have excluded all ten documents from the repository. All are fixed; see
+excluded every document from the repository. All are fixed; see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §5.1.
 
 ---
