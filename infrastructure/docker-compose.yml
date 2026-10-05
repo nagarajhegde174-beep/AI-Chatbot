@@ -302,6 +302,42 @@ services:
       user-service:
         condition: service_started
 
+  # ---------------------------------------------------------- chat-service --
+  # Owns nexa_chat and nothing else. Conversations, messages, history, feedback.
+  #
+  # NO KAFKA DEPENDENCY as a hard requirement: the listener bean only exists
+  # when NEXA_CHAT_EVENT_ENABLED is true, so the service starts and serves with
+  # no broker. Depends on postgres only, because that it genuinely cannot work
+  # without.
+  chat-service:
+    <<: *service-defaults
+    profiles: [backend]
+    build:
+      context: ../backend/chat-service
+      dockerfile: Dockerfile
+    image: nexaai/chat-service:0.1.0-SNAPSHOT
+    container_name: nexa-chat-service
+    ports:
+      - "${CHAT_SERVICE_PORT:-8083}:8083"
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8083
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nexa_chat
+      SPRING_DATASOURCE_USERNAME: nexa_chat
+      SPRING_DATASOURCE_PASSWORD: ${CHAT_DB_PASSWORD:-nexa_chat_local_pw}
+      # PUBLIC key only. No private-key variable exists for this service, and
+      # adding one would be a privilege escalation.
+      NEXA_CHAT_JWT_PUBLIC_KEY: ${NEXA_AUTH_JWT_PUBLIC_KEY:-}
+      NEXA_CHAT_JWT_ISSUER: ${NEXA_AUTH_JWT_ISSUER:-nexa-auth-service}
+      NEXA_CHAT_JWT_AUDIENCE: ${NEXA_AUTH_JWT_AUDIENCE:-nexaai-web}
+      # OFF: there is no AI Service yet, so a sent message leaves a PENDING
+      # placeholder rather than a fabricated reply or a false error.
+      NEXA_CHAT_GENERATION_ENABLED: "false"
+      NEXA_CHAT_EVENT_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ===========================================================================
   # EDGE PROXY
   # ===========================================================================

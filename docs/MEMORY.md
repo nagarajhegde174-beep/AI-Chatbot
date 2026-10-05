@@ -29,8 +29,9 @@ Each service becomes its own independent Spring Boot application, with its own `
 configuration, source tree, tests and Dockerfile **when that service is implemented in its
 explicitly authorised phase**.
 
-**Three are implemented: `api-gateway`, `auth-service` and `user-service`.** 256 tests pass across
-them. The other five directories hold a README describing their boundary and nothing else.
+**Four are implemented: `api-gateway`, `auth-service`, `user-service` and `chat-service`.** 347
+tests pass across them. The other four directories hold a README describing their boundary and
+nothing else.
 
 Unimplemented service directories must remain **non-functional** and must **not** receive fake
 Spring Boot applications, fake controllers, fake business logic, or fake Dockerfiles.
@@ -43,7 +44,7 @@ implemented only when its phase has been explicitly authorised and completed.
 | `api-gateway` | 8080 | *none* | Public entry. Token validation, routing, CORS, correlation ids. **No rate limits yet** |
 | `auth-service` | 8081 | `nexa_auth` | Credentials, tokens, account status |
 | `user-service` | 8082 | `nexa_user` | Profile, preferences, administration |
-| `chat-service` | 8083 | `nexa_chat` | Conversations, messages, memory, SSE relay |
+| `chat-service` | 8083 | `nexa_chat` | Conversations, messages, history, feedback. **SSE and memory not yet** |
 | `ai-service` | 8084 | *none* | Stateless multi-model inference |
 | `document-service` | 8085 | `nexa_document` | Upload, extraction, chunking |
 | `rag-service` | 8086 | `nexa_rag` | Embeddings, pgvector retrieval |
@@ -95,9 +96,9 @@ These are enforced in CI, not merely documented. Full text in [`RULES.md`](RULES
 | 0 | Foundation: repo, architecture, infrastructure, CI, frontend shell | Complete |
 | 1 | Auth Service: registration, sign-in, tokens, RBAC, Google OAuth | Complete |
 | 2 | User Service + API Gateway: profile, preferences, administration, routing, edge auth | **Complete** |
-| 3 | Gateway hardening: JWKS, rate limits, request-size limits, login UI | Not started |
-| 4 | AI Service: Spring AI providers, streaming | Not started |
-| 5 | Chat Service: conversations, memory, SSE relay | Not started |
+| 3 | Chat Service + frontend foundation: conversations, messages, feedback, export | **Complete** |
+| 4 | AI Service: Spring AI providers, streaming. Completes the `ChatGenerationPort` seam | Not started |
+| 5 | Chat streaming: SSE relay, memory window | Not started |
 | 6 | Document Service: upload, extraction, chunking | Not started |
 | 7 | RAG Service: embeddings, pgvector, retrieval | Not started |
 | 8 | RAG integration: grounded answers, citations | Not started |

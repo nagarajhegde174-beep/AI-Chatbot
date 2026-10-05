@@ -94,6 +94,16 @@ abstract class GatewayIntegrationTest {
                 () -> "Path=/api/users/**");
         registry.add("spring.cloud.gateway.server.webflux.routes[1].filters[0]",
                 () -> "RewritePath=/api/users/(?<remaining>.*), /api/v1/$\\{remaining}");
+
+        // /api/chat/** rewritten to the /api/v1/** paths Chat Service serves. Added in
+        // Phase 3 alongside the service, so this route is tested the same way the other
+        // two are rather than being assumed to work.
+        registry.add("spring.cloud.gateway.server.webflux.routes[2].id", () -> "chat-service");
+        registry.add("spring.cloud.gateway.server.webflux.routes[2].uri", UPSTREAM::baseUri);
+        registry.add("spring.cloud.gateway.server.webflux.routes[2].predicates[0]",
+                () -> "Path=/api/chat/**");
+        registry.add("spring.cloud.gateway.server.webflux.routes[2].filters[0]",
+                () -> "RewritePath=/api/chat/(?<remaining>.*), /api/v1/$\\{remaining}");
     }
 
     /**

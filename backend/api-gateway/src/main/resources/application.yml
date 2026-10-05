@@ -44,6 +44,20 @@ spring:
               filters:
                 - RewritePath=/api/users/(?<remaining>.*), /api/v1/$\{remaining}
 
+            # ---- Chat Service ----------------------------------------------
+            # /api/chat/** -> /api/v1/**, matching the shape of the user route.
+            #
+            # Added in Phase 3, alongside the service it points at. A route is never
+            # added in anticipation: a configured route to a service that is not
+            # running fails at request time and reads like a broken service rather
+            # than a broken route.
+            - id: chat-service
+              uri: ${NEXA_CHAT_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/chat/**
+              filters:
+                - RewritePath=/api/chat/(?<remaining>.*), /api/v1/$\{remaining}
+
             # NOTE: Auth Service's /internal/v1/auth/** is deliberately NOT routed.
             # It is the service-to-service surface and has no business being reachable
             # from the public edge.

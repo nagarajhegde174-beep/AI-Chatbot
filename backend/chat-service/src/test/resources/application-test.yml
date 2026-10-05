@@ -1,0 +1,61 @@
+# =====================================================================
+# Test profile.
+#
+# Activated by @ActiveProfiles("test"). Overrides in the test base class
+# arrive later and win.
+# =====================================================================
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    schemas: nexa_chat
+    default-schema: nexa_chat
+    create-schemas: true
+    validate-on-migrate: true
+    clean-disabled: true
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+logging:
+  level:
+    root: WARN
+    com.nexaai.chat: INFO
+    org.springframework.web: WARN
+    org.hibernate: WARN
+    org.flywaydb: INFO
+
+nexa:
+  chat:
+    jwt:
+      issuer: nexa-auth-service
+      audience: nexaai-web
+      key-id: nexa-auth-rs256-1
+    limits:
+      max-page-size: 100
+      default-page-size: 20
+      max-message-length: 32000
+      max-title-length: 200
+    generation:
+      # Deliberately off. These tests assert that a send leaves a PENDING placeholder, which is
+      # the real behaviour of this phase. Turning generation on would make that assertion vacuous.
+      enabled: false
+      default-model: nexa-test-model
+    event:
+      enabled: false
+    user-service:
+      enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
