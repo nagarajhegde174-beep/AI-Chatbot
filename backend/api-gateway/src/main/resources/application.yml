@@ -1,0 +1,124 @@
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      # =================================================================
+      # NOTE THE PREFIX: spring.cloud.gateway.server.webflux
+      #
+      # Spring Cloud Gateway 5 RENAMED the properties prefix. The
+      # spring.cloud.gateway.* used by versions 3 and 4 is still accepted by
+      # older code and is silently IGNORED here, which is the worst possible
+      # failure: the application starts, health is green, and there are zero
+      # routes, so every request 404s at the gateway.
+      #
+      # If routing ever stops working here, check this prefix first and confirm
+      # with GET /actuator/gateway/routes (routeCount must be 2).
+      # =================================================================
+      server:
+        webflux:
+          routes:
+            # ---- Auth Service ---------------------------------------------
+            # /api/auth/login -> /api/v1/auth/login
+            #
+            # RewritePath, NOT StripPrefix. StripPrefix=1 on /api/auth/login yields
+            # /auth/login, which Auth Service does not serve: it answers on
+            # /api/v1/auth/**. Stripping a segment only works when the remaining path happens
+            # to match, which is not a property you can rely on.
+            - id: auth-service
+              uri: ${NEXA_AUTH_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/auth/**
+              filters:
+                - RewritePath=/api/auth/(?<remaining>.*), /api/v1/auth/$\{remaining}
+
+            # ---- User Service ---------------------------------------------
+            # /api/users/** -> User Service, rewritten to the /api/v1/** paths it serves.
+            # /api/users/me          -> /api/v1/me
+            # /api/users/admin/users -> /api/v1/admin/users
+            - id: user-service
+              uri: ${NEXA_USER_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/users/**
+              filters:
+                - RewritePath=/api/users/(?<remaining>.*), /api/v1/$\{remaining}
+
+            # NOTE: Auth Service's /internal/v1/auth/** is deliberately NOT routed.
+            # It is the service-to-service surface and has no business being reachable
+            # from the public edge.
+
+          # Global HTTP client settings for every route.
+          httpclient:
+            connect-timeout: ${NEXA_GATEWAY_CONNECT_TIMEOUT:2000}
+            response-timeout: ${NEXA_GATEWAY_RESPONSE_TIMEOUT:30s}
+            # A streamed response, such as a chat completion, must not be buffered while
+            # waiting for the whole body: buffering would defeat streaming end to end.
+            pool:
+              type: elastic
+              max-idle-time: 30s
+
+server:
+  port: ${NEXA_GATEWAY_PORT:8080}
+  shutdown: graceful
+  netty:
+    # Refuses to buffer more than this from a single connection.
+    max-initial-line-length: 8KB
+  error:
+    # GatewayErrorHandler produces the JSON body. The framework's own error page must never
+    # appear, or a client sees HTML where it expects JSON.
+    include-message: never
+    include-stacktrace: never
+    include-exception: false
+    include-binding-errors: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Health only. /actuator/env and /actuator/heapdump on a public entry point are
+        # reconnaissance for anyone who can reach the port.
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.nexaai.gateway: ${NEXA_GATEWAY_LOG_LEVEL:INFO}
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p %-40.40logger{39} : %m%n"
+
+nexa:
+  gateway:
+    jwt:
+      # Verification only. There is deliberately no private-key property here: the gateway
+      # must not be able to mint a token.
+      public-key: ${NEXA_GATEWAY_JWT_PUBLIC_KEY}
+      issuer: ${NEXA_GATEWAY_JWT_ISSUER:nexa-auth-service}
+      audience: ${NEXA_GATEWAY_JWT_AUDIENCE:nexaai-web}
+      public-paths: ${NEXA_GATEWAY_PUBLIC_PATTERNS:/api/auth/login,/api/auth/register,/api/auth/refresh,/api/auth/password/forgot,/api/auth/password/reset,/api/auth/verify-email,/api/auth/google,/actuator/health,/v3/api-docs/**,/swagger-ui/**,/swagger-ui.html}
+
+    cors:
+      # No default. An empty list stops the application at startup, which is the correct
+      # outcome: defaulting to '*' would publish a browser-readable API to every origin.
+      allowed-origin-patterns: ${NEXA_GATEWAY_CORS_ALLOWED_ORIGIN_PATTERNS:}
+      allowed-methods: ${NEXA_GATEWAY_CORS_ALLOWED_METHODS:GET,POST,PUT,PATCH,DELETE,OPTIONS}
+      allowed-headers: ${NEXA_GATEWAY_CORS_ALLOWED_HEADERS:Authorization,Content-Type,X-CSRF-TOKEN,X-Correlation-Id,Accept,Origin,X-Requested-With}
+      exposed-headers: ${NEXA_GATEWAY_CORS_EXPOSED_HEADERS:X-Correlation-Id,Location}
+      allow-credentials: ${NEXA_GATEWAY_CORS_ALLOW_CREDENTIALS:true}
+      max-age: ${NEXA_GATEWAY_CORS_MAX_AGE:1h}
+
+    limits:
+      connect-timeout: ${NEXA_GATEWAY_CONNECT_TIMEOUT:2s}
+      response-timeout: ${NEXA_GATEWAY_RESPONSE_TIMEOUT:30s}
+      max-request-body-size: ${NEXA_GATEWAY_MAX_REQUEST_BODY_SIZE:10MB}
+
+info:
+  app:
+    name: NexaAI API Gateway
+    description: Single public entry point. Authenticated routing and edge policy only.
+    owns-database: none

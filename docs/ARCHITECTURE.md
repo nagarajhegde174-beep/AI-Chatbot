@@ -395,7 +395,7 @@ frontend/nexa-ai-web/src/
 
 Bootstrap's `data-bs-theme` attribute on `<html>` drives light, dark and system. The token layer
 overrides Bootstrap's CSS variables, so components use Bootstrap classes and still follow the
-theme. See [`DESIGN.md`](DESIGN.md).
+theme. See §9.3 of this document.
 
 ---
 
@@ -514,7 +514,7 @@ ahead.
 |:--:|---|:--:|
 | 0 | Repository, architecture, infrastructure, CI, frontend shell | Complete |
 | 1 | Auth Service: registration, sign-in, tokens, RBAC, Google OAuth | Complete |
-| 2 | User Service: profile, preferences, administration | Not started |
+| 2 | User Service + API Gateway: profile, preferences, administration, routing, edge auth | Complete |
 | 3 | API Gateway hardening, token validation, JWKS, login UI | Not started |
 | 4 | AI Service: Spring AI providers, streaming | Not started |
 | 5 | Chat Service: conversations, messages, memory, SSE relay | Not started |
@@ -563,6 +563,29 @@ rather than by reading:
 | Flyway auto-configuration moved to `spring-boot-flyway` | Without it migrations are **silently not run**: no error, an empty database, then Hibernate reporting every table missing |
 | `@AutoConfigureMockMvc` moved to `spring-boot-webmvc-test` | Same failure mode: the annotation is simply absent |
 
+## 16a. Spring Cloud Gateway 5 findings
+
+Gateway was introduced in Phase 2. Four things about it cost time, and all four fail in ways that
+look like something else. They are recorded here because the next person to touch the gateway will
+hit at least one of them.
+
+| Finding | Symptom when got wrong |
+|---|---|
+| The properties prefix is **`spring.cloud.gateway.server.webflux`**, not `spring.cloud.gateway` | The old prefix is *silently ignored*. The application starts, health is green, there are **zero routes**, and every request 404s at the gateway |
+| `spring-boot-starter-oauth2-resource-server` must **not** be a dependency | It auto-configures a security chain that runs before the gateway's `GlobalFilter`s and rejects everything in its own format. Every request gets an **empty-body 401**, and the gateway's own verification never runs |
+| The reactive starter was renamed | `spring-cloud-starter-gateway` (4.x) → `spring-cloud-starter-gateway-server-webflux` (5.x). The old name resolves to a version incompatible with Boot 4 |
+| `StripPrefix` is not a substitute for `RewritePath` | `StripPrefix=1` on `/api/auth/login` yields `/auth/login`. Auth Service answers on `/api/v1/auth/**`, so every auth route 404s **at the upstream**, which reads like a broken service rather than a broken route |
+
+**Release train.** Gateway 5 pairs with Spring Cloud `2025.1.x`, resolved from Maven Central
+rather than assumed. Spring Cloud and Spring Boot versions must move together; guessing produces a
+runtime failure that presents as a code bug.
+
+**A gotcha worth remembering in any codebase.** `ServerWebExchange.getAttribute` is declared
+`<T> T getAttribute(String key)`. Passing its result directly into `String.valueOf(...)` makes
+javac infer `T = char[]`, because `valueOf(char[])` is a more specific overload than
+`valueOf(Object)`. It compiles, and it throws `ClassCastException` at runtime. Assign to `Object`
+first.
+
 ---
 
 ## 17. Current implementation status
@@ -570,20 +593,36 @@ rather than by reading:
 | Service | Port | Status |
 |---|:--:|---|
 | auth-service | 8081 | **Implemented.** 87 tests pass against real PostgreSQL 17 |
-| api-gateway | 8080 | Not started |
-| user-service | 8082 | Not started |
+| user-service | 8082 | **Implemented.** 120 tests pass against real PostgreSQL 17 |
+| api-gateway | 8080 | **Implemented.** 49 tests pass, over real HTTP |
 | chat-service | 8083 | Not started |
 | ai-service | 8084 | Not started |
 | document-service | 8085 | Not started |
 | rag-service | 8086 | Not started |
 | subscription-service | 8087 | Not started |
 
+**256 tests pass across the three implemented services.**
+
 **Verified for auth-service:** registration, sign-in, RS256 tokens in HTTP-only cookies, refresh
 rotation with reuse detection, logout, email verification, password reset and change, Google OAuth,
 a transactional outbox, CSRF protection, and database isolation proven in both directions.
 
-**Not yet wired:** Kafka publishing (the outbox is written; no broker was available to verify
-against), email delivery (links are published as domain events), and Redis.
+**Verified for user-service:** self-service profile/preferences/status with no route that names a
+user, administrative listing/search/filter/detail, activate/suspend/deactivate with an
+append-only audit trail, the profile created by consuming `auth.user.registered.v1`, and event
+replay proven not to duplicate a profile. Isolation from Auth Service's database is proven by
+connecting as the application role and being refused, not by reading the source.
+
+**Verified for api-gateway:** routing with prefix rewriting, token verification at the edge, the
+strip-then-set behaviour of the identity headers, refusal of `alg: none` and of the
+algorithm-confusion attack, correlation-id sanitisation, CORS allow-listing, and JSON errors from
+the gateway itself. Every routing assertion is made against a recording upstream over real HTTP.
+
+**Not yet wired:** Kafka publishing (auth-service's outbox is written but no broker was available;
+user-service's listener is gated behind `NEXA_USER_EVENT_ENABLED` and has never seen a real
+message), email delivery, Redis, and the Subscription Service call, which is behind an interface
+that reports "unavailable" rather than zero until Phase 9 exists.
 
 **Not yet verified:** the Compose stack has never been started, because Docker was never available
-in the development environment. The Compose file is validated by parsing and review only.
+in the development environment. The Compose file is validated by parsing and review only. No
+container image has ever been built for any service.

@@ -247,12 +247,20 @@ weakens a workflow.
 
 [`PRD.md`](PRD.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`RULES.md`](RULES.md) ·
 [`SERVICE_CONTRACTS.md`](SERVICE_CONTRACTS.md) · [`SECURITY.md`](SECURITY.md) ·
-[`TEST_PLAN.md`](TEST_PLAN.md) · [`DESIGN.md`](DESIGN.md)
+[`TEST_PLAN.md`](TEST_PLAN.md) · [`MEMORY.md`](MEMORY.md)
 
-**No** `TASKS.md`, `DECISIONS.md`, `MEMORY.md`, `ROADMAP.md`, `NOTES.md`, `CHANGELOG.md`,
+**No** `DESIGN.md`, `TASKS.md`, `DECISIONS.md`, `ROADMAP.md`, `NOTES.md`, `CHANGELOG.md`,
 `API.md`, `DATABASE.md` or `IMPLEMENTATION.md`. Progress, decisions and rationale live inside the
 seven, in their appropriate section. Adding an eighth document to avoid editing the right one is
 the failure this rule prevents.
+
+**There is no `DESIGN.md`.** Frontend architecture, the visual system and the design tokens live in
+[`ARCHITECTURE.md`](ARCHITECTURE.md) §9. A separate design document duplicated that section and then
+drifted from it, which is the exact problem this rule exists to prevent.
+
+**`MEMORY.md` is one of the seven.** It is the short, always-current statement of what is true
+now: what exists, what does not, and which rules are not to be broken. It is deliberately brief
+and is not a place for detail — detail belongs in the document that owns the subject.
 
 - A change to a REST or Kafka contract updates [`SERVICE_CONTRACTS.md`](SERVICE_CONTRACTS.md).
 - A change of architectural direction updates [`ARCHITECTURE.md`](ARCHITECTURE.md) §13, and any

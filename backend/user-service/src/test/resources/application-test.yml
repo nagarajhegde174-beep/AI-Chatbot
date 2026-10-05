@@ -1,0 +1,63 @@
+# =====================================================================
+# Test profile.
+#
+# Activated by @ActiveProfiles("test"). Overrides in the test base class
+# arrive later and win; this file removes anything that would reach the
+# network or depend on a machine's local setup.
+# =====================================================================
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # The user tables live in a per-service schema, not in public. A table in public is
+    # reachable by any role that can connect to the database, which would quietly undo the
+    # isolation the grants provide.
+    schemas: nexa_user
+    default-schema: nexa_user
+    create-schemas: true
+    validate-on-migrate: true
+    clean-disabled: true
+
+  kafka:
+    # No listener bean exists in tests, but setting the servers keeps the property
+    # non-null in case anything assembles a Kafka template.
+    bootstrap-servers: localhost:9092
+
+logging:
+  level:
+    root: WARN
+    com.nexaai.user: INFO
+    org.springframework.web: WARN
+    org.hibernate: WARN
+    org.flywaydb: INFO
+    # Hibernate binds parameters and can echo them, which would print every email
+    # and token subject the tests create.
+    org.hibernate.orm.jdbc.bind: TRACE
+
+nexa:
+  user:
+    jwt:
+      issuer: nexa-auth-service
+      audience: nexaai-web
+      key-id: nexa-auth-rs256-1
+    admin:
+      max-page-size: 100
+      default-page-size: 20
+    event:
+      enabled: false
+    client:
+      enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

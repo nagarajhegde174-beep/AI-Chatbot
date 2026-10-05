@@ -194,53 +194,72 @@ Port 8080. Owns no database.
 
 ### 4.1 Responsibilities
 
-- Terminate and validate the access token (RS256), rejecting invalid requests before routing.
-- Route by path prefix to the owning service.
-- Generate and propagate `X-Correlation-Id`.
-- Apply rate limits and body size limits.
-- Apply CORS from a configured allowlist.
-- Aggregate health for orchestration.
-- Deny `/internal/**` and `/actuator/**` from external access.
+**Implemented in Phase 2:**
 
+- Verify the access token (RS256), rejecting invalid requests before routing.
+- Route by path prefix to the owning service.
+- **Strip client-supplied identity headers, then set verified ones** (`X-User-Id`,
+  `X-User-Email`, `X-User-Roles`).
+- Remove the bearer token before forwarding, so no upstream holds a replayable credential.
+- Generate and propagate `X-Correlation-Id`, accepting an inbound value only if it is a UUID.
+- Apply CORS from a configured allowlist, refusing to start when the list is empty.
+- Return JSON errors in the same envelope the services use.
+
+**Not implemented.** Listed so this contract is not read as a claim:
+
+- Rate limits
+- Request body size limits
+- Circuit breaking
+- `/.well-known/jwks.json` and `GET /internal/v1/gateway/info`
 **The gateway holds no business logic.** A route that computes something belongs in the service
 that owns the data.
 
 ### 4.2 Route table
 
-| Public path prefix | Target | Phase |
-|---|---|:--:|
-| `/api/v1/auth/**` | `auth-service:8081` | 1 |
-| `/api/v1/users/me`, `/api/v1/admin/users/**` | `user-service:8082` | 2 |
-| `/api/v1/chat/**` | `chat-service:8083` | 3 |
-| `/api/v1/models/**` | `ai-service:8084` | 4 |
-| `/api/v1/documents/**` | `document-service:8085` | 6 |
-| `/api/v1/rag/**` | `rag-service:8086` | 7 |
-| `/api/v1/subscriptions/**`, `/api/v1/plans/**` | `subscription-service:8087` | 9 |
-| `/internal/v1/chat/**` | `chat-service:8083` | inter-service only |
-| `/internal/v1/ai/**` | `ai-service:8084` | inter-service only |
-| `/internal/v1/rag/**` | `rag-service:8086` | inter-service only |
+Implemented routes only. A route is added when its service exists, not in anticipation: a
+configured route pointing at a service that is not running fails at request time and reads like
+a broken service.
+
+| Public path prefix | Rewritten to | Target | Phase |
+|---|---|---|:--:|
+| `/api/auth/**` | `/api/v1/auth/**` | `auth-service:8081` | 2 |
+| `/api/users/**` | `/api/v1/**` | `user-service:8082` | 2 |
+
+So `/api/users/me` goes to user-service `/api/v1/me`, and `/api/users/admin/users` goes to
+`/api/v1/admin/users`.
+
+**`RewritePath`, not `StripPrefix`.** `StripPrefix=1` on `/api/auth/login` yields `/auth/login`,
+which Auth Service does not serve; it answers on `/api/v1/auth/**`. Stripping a segment only works
+when what remains happens to match, which is not a property to rely on.
+
+**Not routed:** every other service prefix, and Auth Service's `/internal/v1/auth/**`. The
+internal surface is service-to-service and must not be reachable from the public edge.
 
 ### 4.3 Per-route policy
 
 | Policy | Value |
 |---|---|
-| Authentication | Required except where listed as public |
-| Rate limit | Per concern: auth 10/min, chat 60/min, api 300/min per IP |
-| Body size | 25 MB on upload routes, 1 MB elsewhere |
-| Timeout | 30 s default, 600 s on streaming routes |
-| Retry | Never on a non-idempotent method |
-| Circuit breaker | Per downstream service |
+| Authentication | Required except the configured public paths |
+| Body size | Not implemented |
+| Timeout | Connect 2 s, response 30 s |
+| Retry | None |
+| Circuit breaker | **None.** An untested fallback is worse than an honest 502: it turns an outage into a silent wrong answer |
+| Rate limit | **None yet** |
 
-**Never retry a `POST`.** A retried `POST /messages` bills the user twice.
+Public paths are an explicit configured list, not a pattern heuristic. `/api/auth/login` is
+public; `/api/auth/me` is not. A prefix rule would expose most of the interesting surface.
 
 ### 4.4 Gateway endpoints
 
 | Method | Path | Purpose | Phase |
 |---|---|---|:--:|
-| GET | `/actuator/health` | Aggregate health | 3 |
+| GET | `/actuator/health` | Liveness and readiness | 2 |
+| GET | `/healthz` | NGINX-facing liveness | 0 |
 | GET | `/internal/v1/gateway/info` | Services and routes | 3 |
 | GET | `/.well-known/jwks.json` | RS256 public key set, for verifiers | 3 |
-| GET | `/healthz` | NGINX-facing liveness | 0 |
+
+`/actuator/**` other than health is not exposed. `/actuator/env` and `/actuator/heapdump` on a
+public entry point are reconnaissance for anyone who can reach the port.
 
 ---
 
@@ -482,55 +501,115 @@ Port 8082. Owns `nexa_user`.
 
 ### 6.1 Endpoints
 
-| Method | Path | Auth | Purpose |
-|---|---|:--:|---|
-| GET | `/api/v1/users/me` | bearer | Own profile |
-| PATCH | `/api/v1/users/me` | bearer | Update own profile |
-| PUT | `/api/v1/users/me/preferences` | bearer | Replace preferences |
-| DELETE | `/api/v1/users/me` | bearer | Delete own account and data |
-| GET | `/api/v1/admin/users` | ADMIN | List users |
-| GET | `/api/v1/admin/users/{id}` | ADMIN | One user |
-| PATCH | `/api/v1/admin/users/{id}/status` | ADMIN | Suspend or reinstate |
+**Self-service. No route here takes a user identifier.** The caller comes from the verified
+token, never from the request. This is the structural guarantee that one caller cannot read
+another's data: there is no parameter to put someone else's id in.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/me` | Own profile |
+| PATCH | `/api/v1/me` | Display name and avatar only |
+| GET | `/api/v1/me/preferences` | Own preferences |
+| PATCH | `/api/v1/me/preferences` | Partial update; absent fields unchanged |
+| GET | `/api/v1/me/status` | Own status, reason, and own history |
+
+`PATCH /api/v1/me` accepts **no** `email`, `role`, `accountStatus` or `authUserId` field. Those
+are owned elsewhere, and an endpoint that accepts them is a privilege escalation. Their absence
+from the request type is the control.
+
+**Administrative.** Requires `ADMIN`. Users are addressed by **auth-service id**, the
+platform-wide identity; the internal surrogate id means nothing outside this service.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/users` | List: filter by `status`/`role`, `search`, page |
+| GET | `/api/v1/admin/users/counts` | Counts by status |
+| GET | `/api/v1/admin/users/{id}` | Detail, including the full status history |
+| GET | `/api/v1/admin/users/{id}/usage` | Subscription and usage |
+| POST | `/api/v1/admin/users/{id}/activate` | |
+| POST | `/api/v1/admin/users/{id}/suspend` | **Reason required** |
+| POST | `/api/v1/admin/users/{id}/deactivate` | Permanent; no transition leaves it |
+| POST | `/api/v1/admin/users/{id}/status` | The general form of the three above |
+
+Three deliberate choices worth stating:
+
+- **A suspension requires a reason**, which is shown to the account holder. An unexplained block
+  is a support ticket, not an administrative decision.
+- **The account holder's own history omits the acting administrator.** They need to know a
+  suspension happened and why; they do not need the operator's identity. The admin view does
+  include it.
+- **Unknown query filters are rejected, not ignored.** Silently dropping a misspelled `status`
+  and returning every user is how a response gets cached and screenshotted.
 
 ### 6.2 Profile shape
 
 ```json
 {
-  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "id": "3d0f7a55-6c21-4a3e-9f18-2b7c5e0d9a44",
+  "authUserId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
   "email": "user@example.com",
   "displayName": "Ada",
   "avatarUrl": null,
   "accountStatus": "ACTIVE",
-  "preferences": {
-    "theme": "system",
-    "defaultModel": null,
-    "ragEnabledByDefault": true,
-    "streamResponses": true
-  },
+  "role": "USER",
+  "statusReason": null,
+  "statusChangedAt": null,
+  "planId": null,
+  "planName": null,
+  "emailVerified": true,
+  "registeredVia": "PASSWORD",
   "createdAt": "2026-01-15T10:30:00Z",
   "updatedAt": "2026-01-15T10:30:00Z"
 }
 ```
 
 **No password, hash, or token field exists in this shape**, because none of them ever reaches
-this service ([`SECURITY.md`](SECURITY.md) §11.1).
+this service ([`SECURITY.md`](SECURITY.md) §11.1). There is no column to hold one either.
+
+`accountStatus` here is a **projection** of Auth Service's authoritative status, kept so the
+admin view can filter and explain without a network call per row and so a blocked user can see why
+on their own profile. It is denormalised read state, not a second source of truth.
 
 ### 6.3 Consumes
 
-| Topic | Action |
-|---|---|
-| `auth.user.registered.v1` | Create the profile |
-| `auth.user.email_verified.v1` | Mark verified |
-| `subscription.activated.v1` | Attach the plan summary |
-| `subscription.cancelled.v1` | Detach the plan summary |
+| Topic | Action | Implemented |
+|---|---|:--:|
+| `auth.user.registered.v1` | Create the profile | **Yes** |
+| `auth.user.email_verified.v1` | Mark verified | No |
+| `subscription.activated.v1` | Attach the plan summary | No |
+| `subscription.cancelled.v1` | Detach the plan summary | No |
+| `user.status.changed.v1` | Republish an administrative change | No |
+
+Consumption is **idempotent on `eventId`**, recorded in `processed_event` in the same transaction
+as the profile insert. Kafka is at-least-once, so a replay must not produce a second profile;
+the unique constraint on `auth_user_id` is the backstop when two consumers race.
+
+The listener bean exists only when `NEXA_USER_EVENT_ENABLED` is true, so the service starts and
+serves traffic with no broker present.
 
 ### 6.4 Produces
+
+**Nothing yet.** Phase 2 implements no publisher. The three topics below are the intended
+contract for later phases:
 
 | Topic | Action |
 |---|---|
 | `user.profile.updated.v1` | Invalidate caches, update search indexes |
 | `user.account.deleted.v1` | Trigger deletion across services |
 | `user.status.changed.v1` | Notify chat and subscription services |
+
+This is stated plainly because a contract listing topics that are never published is worse than
+one that admits it has none.
+
+### 6.5 Subscription and usage
+
+`GET /api/v1/admin/users/{id}/usage` crosses a service boundary to Subscription Service over
+HTTP, behind an interface. It does **not** read that service's database; doing so would violate
+the same rule as reading Auth Service's.
+
+Until Phase 9 exists the call is disabled and the response reports `available: false` with a
+reason. It does **not** report zero: a zero reads as "this user has used nothing", which is a
+different and wrong claim.
 
 ---
 

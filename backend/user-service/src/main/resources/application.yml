@@ -1,0 +1,147 @@
+# =====================================================================
+# User Service configuration.
+#
+# Every value comes from the environment. No secret has a default: a
+# missing key must fail at startup, not silently fall back to something
+# that works in development and is wrong in production.
+# =====================================================================
+spring:
+  application:
+    name: user-service
+
+  datasource:
+    # nexa_user ONLY. This role is granted on exactly one database, so a
+    # cross-service query fails with a permission error rather than
+    # quietly succeeding. See docs/RULES.md section 3.
+    #
+    # The variable names are the ones auth-service already uses, deliberately. A
+    # per-service prefix would look tidier and would mean every Compose entry,
+    # deployment manifest and runbook has to know which convention applies to
+    # which service.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nexa_user}
+    username: ${SPRING_DATASOURCE_USERNAME:nexa_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: 2
+      connection-timeout: 5000
+      pool-name: nexa-user-pool
+
+  jpa:
+    # The migration is the schema. ddl-auto validate makes that load-bearing: if a
+    # migration and an entity disagree, this service refuses to start instead of
+    # quietly writing columns nobody designed.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # nexa_user names a SCHEMA inside the nexa_user database, not the database itself.
+    # The schema is per-service so a stray unqualified table can never land in a shared
+    # place. Flyway creates it and owns it; the service role may use it but not own it.
+    schemas: nexa_user
+    default-schema: nexa_user
+    create-schemas: true
+    # Never silently repair a checksum mismatch: that means the database and the code
+    # disagree about the schema, which is the worst state to discover later.
+    validate-on-migrate: true
+    clean-disabled: true
+
+  kafka:
+    bootstrap-servers: ${NEXA_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # Never auto-create topics. Topic creation is an explicit operational
+    # decision, and letting an application create them means whichever
+    # service starts first silently fixes the partition count for everyone.
+    admin:
+      fail-fast: false
+    producer: null
+    consumer:
+      # Off by default in this environment; the listener bean is absent unless
+      # nexa.user.event.enabled is true.
+      properties:
+        spring.json.trusted.packages: com.nexaai.user.event
+
+server:
+  port: ${NEXA_USER_PORT:8082}
+  shutdown: graceful
+  error:
+    # The error body is the ApiError shape produced by ApiExceptionHandler.
+    # include-message: never, because a framework-generated message can carry
+    # internals that the handler deliberately kept out of it.
+    include-message: never
+    include-stacktrace: never
+    include-exception: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only health is exposed. /actuator/env and /actuator/heapdump are
+        # reconnaissance for anyone who can reach the port.
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  health:
+    db:
+      enabled: true
+
+info:
+  app:
+    name: NexaAI User Service
+    description: Profile, preferences, account status and administrative user management.
+    owns-database: nexa_user
+
+logging:
+  level:
+    root: INFO
+    com.nexaai.user: ${NEXA_USER_LOG_LEVEL:INFO}
+  pattern:
+    # correlationId is placed into MDC by CorrelationIdFilter.
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%X{correlationId:--}] %-40.40logger{39} : %m%n"
+
+nexa:
+  user:
+    jwt:
+      # Verification only. There is deliberately no private-key property: a
+      # service that cannot sign cannot mint a token for itself.
+      public-key: ${NEXA_USER_JWT_PUBLIC_KEY}
+      issuer: ${NEXA_USER_JWT_ISSUER:nexa-auth-service}
+      audience: ${NEXA_USER_JWT_AUDIENCE:nexaai-web}
+      key-id: ${NEXA_USER_JWT_KEY_ID:nexa-auth-rs256-1}
+
+    admin:
+      # A caller-supplied page size is capped at this. Uncapped is a denial of
+      # service dressed as a convenience.
+      max-page-size: ${NEXA_USER_ADMIN_MAX_PAGE_SIZE:100}
+      default-page-size: ${NEXA_USER_ADMIN_DEFAULT_PAGE_SIZE:20}
+
+    event:
+      # The Kafka listener bean exists only when this is true, so the service
+      # starts and serves traffic with no broker present.
+      enabled: ${NEXA_USER_EVENT_ENABLED:true}
+      # This service's own group. A group shared with another service would make
+      # the two compete for events, each receiving a random subset.
+      consumer-group: ${NEXA_USER_CONSUMER_GROUP:user-profile-events}
+
+    client:
+      # Subscription Service is implemented in Phase 9. Until it exists these
+      # calls are not made, and the admin view reports usage as unavailable
+      # rather than as zero.
+      enabled: ${NEXA_USER_CLIENT_ENABLED:false}
+      subscription-service-url: ${NEXA_SUBSCRIPTION_SERVICE_URL:http://localhost:8087}
+      timeout: ${NEXA_USER_CLIENT_TIMEOUT:3s}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method

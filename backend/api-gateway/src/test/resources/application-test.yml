@@ -1,0 +1,52 @@
+# =====================================================================
+# Gateway test profile.
+#
+# Routes are NOT declared here. They are supplied by
+# GatewayIntegrationTest#gatewayProperties, which points both of them at
+# the recording stub.
+#
+# Declaring them in YAML instead meant they depended on a ${PLACEHOLDER}
+# resolving from a dynamic property source. That indirection is invisible
+# when it silently fails, and it did: the routes never bound, so every
+# request 404'd at the gateway and the tests were asserting that 404.
+# =====================================================================
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 10s
+
+server:
+  port: 0
+
+logging:
+  level:
+    # WARN, not ERROR. The error handler logs every gateway failure at ERROR, so leaving the
+    # root at ERROR makes a passing run indistinguishable from a failing one.
+    root: WARN
+    com.nexaai.gateway: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # gateway is exposed in tests only, so a test can assert the routes that were
+        # actually loaded. Asserting on the YAML would pass even if binding had failed.
+        include: health,gateway
+  endpoint:
+    health:
+      show-details: never
+
+nexa:
+  gateway:
+    jwt:
+      issuer: nexa-auth-service
+      audience: nexaai-web
+      public-paths: /api/auth/login,/api/auth/register,/api/auth/refresh,/api/auth/password/forgot,/api/auth/password/reset,/api/auth/verify-email,/api/auth/google,/actuator/health,/actuator/gateway/**,/v3/api-docs/**,/swagger-ui/**,/swagger-ui.html
+    cors:
+      # A real allow-list, because an empty one stops the application at startup by design.
+      allowed-origin-patterns: https://app.nexaai.test,http://localhost:5173
+      allow-credentials: true

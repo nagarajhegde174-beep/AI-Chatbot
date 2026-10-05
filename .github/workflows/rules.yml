@@ -521,11 +521,16 @@ jobs:
         run: |
           set -euo pipefail
           # The project has exactly SEVEN documents. A missing one is a failure,
-          # and so is an eighth. Docs/RULES.md section 12 forbids adding a
-          # TASKS, DECISIONS, MEMORY, ROADMAP or CHANGELOG file to avoid editing
+          # and so is an eighth. docs/RULES.md section 12 forbids adding a
+          # DESIGN, TASKS, DECISIONS, ROADMAP or CHANGELOG file to avoid editing
           # the right one, so this check has to enforce the boundary in both
           # directions rather than only checking for presence.
-          required="ARCHITECTURE DESIGN PRD RULES SECURITY SERVICE_CONTRACTS TEST_PLAN"
+          #
+          # MEMORY.md is one of the seven: the short statement of what is true now.
+          # DESIGN.md deliberately is NOT one of them. Frontend architecture and the
+          # visual system live in ARCHITECTURE.md section 9; a separate design
+          # document duplicated that and then drifted from it.
+          required="ARCHITECTURE MEMORY PRD RULES SECURITY SERVICE_CONTRACTS TEST_PLAN"
 
           for d in $required; do
             [ -f "docs/$d.md" ] || { echo "::error::missing docs/$d.md"; exit 1; }
