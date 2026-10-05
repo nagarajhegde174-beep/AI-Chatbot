@@ -515,9 +515,9 @@ ahead.
 | 0 | Repository, architecture, infrastructure, CI, frontend shell | Complete |
 | 1 | Auth Service: registration, sign-in, tokens, RBAC, Google OAuth | Complete |
 | 2 | User Service + API Gateway: profile, preferences, administration, routing, edge auth | Complete |
-| 3 | API Gateway hardening, token validation, JWKS, login UI | Not started |
-| 4 | AI Service: Spring AI providers, streaming | Not started |
-| 5 | Chat Service: conversations, messages, memory, SSE relay | Not started |
+| 3 | Chat Service + frontend foundation: conversations, messages, feedback, export | Complete |
+| 4 | AI Service: Spring AI providers, streaming. Completes the `ChatGenerationPort` seam | Not started |
+| 5 | Chat: streaming relay (SSE), memory window | Not started |
 | 6 | Document Service: upload, extraction, chunking | Not started |
 | 7 | RAG Service: embeddings, pgvector, retrieval | Not started |
 | 8 | RAG integration: grounded answers, citations | Not started |
@@ -594,8 +594,8 @@ first.
 |---|:--:|---|
 | auth-service | 8081 | **Implemented.** 87 tests pass against real PostgreSQL 17 |
 | user-service | 8082 | **Implemented.** 120 tests pass against real PostgreSQL 17 |
-| api-gateway | 8080 | **Implemented.** 49 tests pass, over real HTTP |
-| chat-service | 8083 | Not started |
+| api-gateway | 8080 | **Implemented.** 51 tests pass, over real HTTP |
+| chat-service | 8083 | **Implemented.** 92 tests pass against real PostgreSQL 17 |
 | ai-service | 8084 | Not started |
 | document-service | 8085 | Not started |
 | rag-service | 8086 | Not started |
@@ -617,6 +617,23 @@ connecting as the application role and being refused, not by reading the source.
 strip-then-set behaviour of the identity headers, refusal of `alg: none` and of the
 algorithm-confusion attack, correlation-id sanitisation, CORS allow-listing, and JSON errors from
 the gateway itself. Every routing assertion is made against a recording upstream over real HTTP.
+
+**Verified for chat-service:** create, list, get, rename, delete, archive and restore, search by
+title or message text, send, regenerate, edit-and-resend, feedback, and export as Markdown or
+JSON. User isolation proven by asserting another user's conversation returns a 404 byte-identical
+to one that does not exist, and that an ADMIN can read metadata but is given no route to any
+user's message content. Database isolation proven by connecting as the application role and being
+refused.
+
+**Verified for the frontend:** it compiles, type-checks under `strict`, lints, and builds; the
+theme tokens and Bootstrap variable overrides reach the built CSS; no credential appears in the
+bundle. Routing, shell, auth pages, chat layout, sidebar, conversation list, message components,
+loading/error/empty states, the responsive drawer and the theme foundation are all in place and
+type-checked.
+
+**Not yet wired:** AI generation. The `ChatGenerationPort` seam exists with no implementation, so
+a sent message creates a PENDING placeholder and it stays PENDING — which is the honest state, not
+a fabricated reply and not a false error.
 
 **Not yet wired:** Kafka publishing (auth-service's outbox is written but no broker was available;
 user-service's listener is gated behind `NEXA_USER_EVENT_ENABLED` and has never seen a real

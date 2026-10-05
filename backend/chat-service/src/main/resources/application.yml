@@ -1,0 +1,145 @@
+# =====================================================================
+# Chat Service configuration.
+#
+# Every value comes from the environment. No secret has a default: a
+# missing key must fail at startup, not fall back to something that
+# works in development and is wrong in production.
+# =====================================================================
+spring:
+  application:
+    name: chat-service
+
+  datasource:
+    # nexa_chat ONLY. This role is granted on exactly one database, so a
+    # cross-service query fails with a permission error rather than quietly
+    # succeeding (docs/RULES.md section 3).
+    #
+    # The variable names are the ones the other services already use,
+    # deliberately. A per-service prefix would mean every Compose entry,
+    # deployment manifest and runbook has to know which convention applies
+    # to which service.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nexa_chat}
+    username: ${SPRING_DATASOURCE_USERNAME:nexa_chat}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: 2
+      connection-timeout: 5000
+      pool-name: nexa-chat-pool
+
+  jpa:
+    # The migration is the schema. ddl-auto: validate makes that
+    # load-bearing: if a migration and an entity disagree, this service
+    # refuses to start instead of quietly writing columns nobody designed.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # nexa_chat is a per-service SCHEMA inside the nexa_chat database.
+    # A table in public would be reachable by any role that can connect,
+    # which would quietly undo the isolation the grants provide.
+    schemas: nexa_chat
+    default-schema: nexa_chat
+    create-schemas: true
+    # Never silently repair a checksum mismatch: that means the database and
+    # the code disagree about the schema, the worst state to discover later.
+    validate-on-migrate: true
+    clean-disabled: true
+
+  kafka:
+    bootstrap-servers: ${NEXA_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      properties:
+        spring.json.trusted.packages: com.nexaai.chat.event
+
+server:
+  port: ${NEXA_CHAT_PORT:8083}
+  shutdown: graceful
+  error:
+    # The error body is the ApiError shape from ApiExceptionHandler.
+    # include-message: never, because a framework-generated message can
+    # carry internals that the handler deliberately kept out of it.
+    include-message: never
+    include-stacktrace: never
+    include-exception: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Health only. /actuator/env and /actuator/heapdump are
+        # reconnaissance for anyone who can reach the port.
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+info:
+  app:
+    name: NexaAI Chat Service
+    description: Conversations, messages, history and feedback.
+    owns-database: nexa_chat
+
+logging:
+  level:
+    root: INFO
+    com.nexaai.chat: ${NEXA_CHAT_LOG_LEVEL:INFO}
+  pattern:
+    # correlationId is placed into MDC by CorrelationIdFilter.
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%X{correlationId:--}] %-40.40logger{39} : %m%n"
+
+nexa:
+  chat:
+    jwt:
+      # Verification only. There is deliberately no private-key property: a
+      # service that cannot sign cannot escalate itself.
+      public-key: ${NEXA_CHAT_JWT_PUBLIC_KEY}
+      issuer: ${NEXA_CHAT_JWT_ISSUER:nexa-auth-service}
+      audience: ${NEXA_CHAT_JWT_AUDIENCE:nexaai-web}
+      key-id: ${NEXA_CHAT_JWT_KEY_ID:nexa-auth-rs256-1}
+
+    limits:
+      # A caller-supplied page size is capped at this. Uncapped is a denial
+      # of service dressed as a convenience.
+      max-page-size: ${NEXA_CHAT_MAX_PAGE_SIZE:100}
+      default-page-size: ${NEXA_CHAT_DEFAULT_PAGE_SIZE:20}
+      max-message-length: ${NEXA_CHAT_MAX_MESSAGE_LENGTH:32000}
+      max-title-length: ${NEXA_CHAT_MAX_TITLE_LENGTH:200}
+
+    generation:
+      # OFF in this phase. There is no AI Service yet, so a sent message
+      # leaves a PENDING placeholder. Turning this on without a real port
+      # implementing ChatGenerationPort changes nothing: the port reports
+      # itself unavailable and placeholders stay PENDING.
+      enabled: ${NEXA_CHAT_GENERATION_ENABLED:false}
+      ai-service-url: ${NEXA_AI_SERVICE_URL:http://localhost:8084}
+      timeout: ${NEXA_CHAT_GENERATION_TIMEOUT:60s}
+      default-model: ${NEXA_CHAT_DEFAULT_MODEL:nexa-default}
+
+    event:
+      # The listener is absent unless this is true, so the service starts and
+      # serves traffic with no broker present.
+      enabled: ${NEXA_CHAT_EVENT_ENABLED:false}
+      consumer-group: ${NEXA_CHAT_CONSUMER_GROUP:chat-events}
+
+    user-service:
+      # Off until something needs it. Building the boundary now is cheaper
+      # than retrofitting it later.
+      enabled: ${NEXA_CHAT_USER_SERVICE_ENABLED:false}
+      base-url: ${NEXA_USER_SERVICE_URL:http://localhost:8082}
+      timeout: ${NEXA_CHAT_USER_SERVICE_TIMEOUT:3s}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method

@@ -57,6 +57,25 @@ class GatewayRoutingIntegrationTest extends GatewayIntegrationTest {
         }
 
         @Test
+        @DisplayName("/api/chat/conversations reaches Chat Service as /api/v1/conversations")
+        void routesChatOntoTheServicePath() {
+            get("/api/chat/conversations", GatewayTestTokens.userToken());
+
+            assertThat(upstream().lastRequest().path()).isEqualTo("/api/v1/conversations");
+        }
+
+        @Test
+        @DisplayName("a nested chat path survives the rewrite")
+        void routesNestedChatPath() {
+            // A single-segment path cannot distinguish a working rewrite from one that ate too
+            // much, so this uses a nested one.
+            get("/api/chat/conversations/abc/messages", GatewayTestTokens.userToken());
+
+            assertThat(upstream().lastRequest().path())
+                    .isEqualTo("/api/v1/conversations/abc/messages");
+        }
+
+        @Test
         @DisplayName("Auth Service's internal surface is NOT reachable through the gateway")
         void internalAuthSurfaceIsNotRouted() {
             // /internal/v1/auth is the service-to-service API. Exposing it at the public edge

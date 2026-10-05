@@ -131,14 +131,41 @@ Each phase adds the listed layers. A phase is not done until its criteria in
 **Not done in Phase 2, carried to Phase 3:** rate limits, request-size limits, a service timeout
 producing a 504 rather than a hang, JWKS, and `/.well-known/jwks.json`.
 
-### Phase 3 — Gateway and auth UI
-- [ ] Gateway: `/internal/**` unreachable externally (see the note above)
-- [ ] Gateway: a service timeout produces a 504, not a hang
-- [ ] Gateway: rate limits and request-size limits
-- [ ] Gateway: `/.well-known/jwks.json` public key set for external verifiers
-- [ ] Frontend: component tests for auth state transitions
-- [ ] Frontend: E2E sign in → refresh on expiry → sign out
+### Phase 3 - Chat Service + frontend foundation
 
+**Chat Service. All done - 92 tests.**
+
+- [x] Unit: conversation lifecycle, message lifecycle, title derivation, feedback
+- [x] Integration: each of the fourteen required capabilities over HTTP against real PostgreSQL
+- [x] **Isolation: user A cannot read, rename, archive, delete, send into, search into or export
+      user B''s conversation**
+- [x] **Isolation: user A cannot edit, regenerate, rate or delete user B''s message**
+- [x] **No existence oracle: the 404 for another user''s conversation is byte-identical to the 404
+      for an id that does not exist**
+- [x] **Isolation: the `nexa_chat` role cannot connect to another service''s database at all**
+- [x] Schema: `nexa_chat` contains no credential column
+- [x] A send leaves the assistant placeholder `PENDING`, not `FAILED` and not fabricated content
+- [x] Edit and regenerate supersede rather than overwrite
+- [x] Search finds a conversation that has no messages yet
+- [x] Search escapes `%` and `_`, so a wildcard query cannot match everything
+- [x] The default listing excludes archived; archived has its own route
+- [x] Feedback re-rating updates the existing row rather than adding a second
+- [x] The export filename is the UUID, never the title
+- [ ] **ADMIN can read another user''s message content** - deliberately NOT implemented. Metadata
+      only. There is no such route, and adding one is out of scope without an audited,
+      time-boxed support-access feature
+- [ ] SSE streaming - Phase 5
+
+**Frontend foundation. Built; not covered by automated tests.**
+
+- [x] Compiles, type-checks under `strict`, lints with 0 errors, builds
+- [x] Theme tokens and Bootstrap variable overrides reach the built CSS bundle
+- [x] No credential in `dist/`
+- [x] JS bundle 110 kB gzipped, within the 200 kB budget
+- [x] Routing, shell, auth pages, chat layout, sidebar, conversation list, message components,
+      loading/error/empty states, responsive drawer and theme foundation all present
+- [ ] Component tests and E2E sign-in flow - **not built.** This is a real gap, recorded here
+      rather than implied. The frontend has no test runner configured in this phase.
 ### Phase 4 — AI Service
 - [ ] Unit: provider selection, parameter mapping, error classification
 - [ ] Integration: each provider, streaming and non-streaming, against a **recorded** or stubbed
@@ -148,11 +175,12 @@ producing a 504 rather than a hang, JWKS, and `/.well-known/jwks.json`.
 - [ ] Resilience: circuit breaker opens after repeated failures and recovers
 - [ ] Contract: `ai.inference.completed.v1` carries accurate token counts
 
-### Phase 5 — Chat Service
+### Phase 5 - Chat streaming (SSE) on the existing Chat Service
+
+Chat Service itself was built in Phase 3. This phase adds the streamed turn on top of it.
 - [ ] Unit: memory window assembly, token-budget trimming, stream state machine
-- [ ] Slice: conversation and message controllers
 - [ ] Integration: full message lifecycle with a stubbed AI Service
-- [ ] **Isolation: a USER cannot read or write another user's conversation**
+- [x] **Isolation: a USER cannot read or write another user's conversation** (Phase 3)
 - [ ] **Streaming: the first token is relayed before generation completes**
 - [ ] Streaming: an interrupted stream is stored as incomplete
 - [ ] Quota: the check happens *before* the provider is called

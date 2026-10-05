@@ -224,6 +224,7 @@ a broken service.
 |---|---|---|:--:|
 | `/api/auth/**` | `/api/v1/auth/**` | `auth-service:8081` | 2 |
 | `/api/users/**` | `/api/v1/**` | `user-service:8082` | 2 |
+| `/api/chat/**` | `/api/v1/**` | `chat-service:8083` | 3 |
 
 So `/api/users/me` goes to user-service `/api/v1/me`, and `/api/users/admin/users` goes to
 `/api/v1/admin/users`.
@@ -621,17 +622,101 @@ Port 8083. Owns `nexa_chat`. Orchestrates a chat turn.
 
 | Method | Path | Auth | Purpose |
 |---|---|:--:|---|
-| GET | `/api/v1/chat/conversations` | bearer | List own conversations |
-| POST | `/api/v1/chat/conversations` | bearer | Create |
-| GET | `/api/v1/chat/conversations/{id}` | bearer | One, with ownership check |
-| PATCH | `/api/v1/chat/conversations/{id}` | bearer | Rename, change model |
-| DELETE | `/api/v1/chat/conversations/{id}` | bearer | Delete |
-| GET | `/api/v1/chat/conversations/{id}/messages` | bearer | History, paginated |
-| POST | `/api/v1/chat/conversations/{id}/messages` | bearer | Send a message, **SSE** |
-| POST | `/api/v1/chat/conversations/{id}/messages/{messageId}/regenerate` | bearer | Regenerate |
-| DELETE | `/api/v1/chat/conversations/{id}/messages/{messageId}` | bearer | Delete a message |
+**Conversations are the sessions.** There is no separate session table: a session *is* a
+conversation, and a second table would let the two disagree about what exists.
 
-### 7.2 Streaming contract
+**No route accepts a user identifier.** Conversations and messages are addressed by their own id
+and scoped to the caller by the query. Another user's conversation returns **404, not 403** —
+a 403 confirms it exists, which is a reliable oracle for discovering real ids.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/conversations` | Create. Body may be empty |
+| GET | `/api/v1/conversations` | **Active** conversations. Excludes archived |
+| GET | `/api/v1/conversations/archived` | Archived conversations |
+| GET | `/api/v1/conversations/search?q=` | By title **or** message text |
+| GET | `/api/v1/conversations/{id}` | One |
+| PATCH | `/api/v1/conversations/{id}` | Rename |
+| PATCH | `/api/v1/conversations/{id}/model` | Pin or unpin the model |
+| POST | `/api/v1/conversations/{id}/archive` | |
+| POST | `/api/v1/conversations/{id}/restore` | |
+| DELETE | `/api/v1/conversations/{id}` | Soft delete |
+| GET | `/api/v1/conversations/{id}/messages` | History, oldest first. Superseded excluded |
+| POST | `/api/v1/conversations/{id}/messages` | **Send.** JSON, not SSE yet |
+| GET | `/api/v1/conversations/{id}/export` | Markdown or JSON |
+| POST | `/api/v1/messages/{id}/regenerate` | **Regenerate** |
+| PUT | `/api/v1/messages/{id}` | **Edit and resend** |
+| DELETE | `/api/v1/messages/{id}` | Delete one message |
+| PUT | `/api/v1/messages/{id}/feedback` | **Rate** |
+| DELETE | `/api/v1/messages/{id}/feedback` | Clear a rating |
+
+All require a bearer token.
+
+#### Administrative — requires `ADMIN`, metadata only
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/conversations` | List across all users |
+| GET | `/api/v1/admin/conversations/counts` | Aggregate counts |
+| GET | `/api/v1/admin/conversations/feedback-totals` | Rating counts |
+| GET | `/api/v1/admin/conversations/{id}` | One conversation's metadata |
+
+**There is no administrative route to message content.** An ADMIN sees owner, title, timestamps,
+message count and status. It cannot read messages and cannot export a conversation.
+
+That is a decision, not a gap. Message content is private data, and a role that can read every
+conversation without limit is a surveillance capability no dashboard justifies. Where an operator
+genuinely must read content, that needs a separate audited, time-boxed support-access feature
+with a recorded reason — not this route.
+
+#### Message shape
+
+```json
+{
+  "id": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "conversationId": "3d0f7a55-6c21-4a3e-9f18-2b7c5e0d9a44",
+  "sequenceNo": 2,
+  "role": "ASSISTANT",
+  "content": "",
+  "status": "PENDING",
+  "model": "nexa-default",
+  "inputTokens": null,
+  "outputTokens": null,
+  "edited": false,
+  "regenerated": false,
+  "failureReason": null,
+  "createdAt": "2026-01-15T10:30:00Z",
+  "feedback": null
+}
+```
+
+`status` is `COMPLETE`, `PENDING` or `FAILED`. **`PENDING` is the AI response placeholder, and
+it is written before generation is attempted.** If the row were created afterwards, an
+interrupted stream, a crashed process or a timeout would leave the user with a question, no
+reply, and no evidence anything happened.
+
+**Sending currently produces a `PENDING` placeholder and it stays `PENDING`.** Generation is not
+wired in Phase 3. That is not an error: nothing failed, nothing was attempted. It is also not
+fabricated content, and it is not `FAILED` — a failed badge on every reply would be a lie.
+
+#### History is append-only
+
+Editing a user message writes a **new** row and supersedes the old one; regenerating does the
+same in reverse. Nothing is overwritten in place. Superseded rows remain in the table and are
+excluded from the default history read.
+
+The intuitive implementation mutates the row, which destroys the only record of what was
+originally said — and since showing alternatives is the entire point of edit and regenerate, an
+implementation that deletes the previous attempt cannot implement them correctly.
+
+### 7.2 Streaming contract (Phase 5 — not implemented)
+
+> **Not implemented.** Chat Service currently answers `POST /messages` with JSON, not
+> `text/event-stream`. The shape below is the contract the SSE relay will implement in Phase 5,
+> and the PENDING placeholder it will complete is already in place. It is recorded here so the
+> eventual implementation has something concrete to satisfy, and so no client is written against
+> an invented stream format.
+
 
 ```
 POST /api/v1/chat/conversations/{id}/messages
