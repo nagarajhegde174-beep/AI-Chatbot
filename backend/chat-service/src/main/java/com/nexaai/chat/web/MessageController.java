@@ -1,8 +1,11 @@
 package com.nexaai.chat.web;
 
+import com.nexaai.chat.client.AiServiceStreamClient;
+import com.nexaai.chat.config.ChatProperties;
 import com.nexaai.chat.domain.FeedbackRating;
 import com.nexaai.chat.security.CurrentCaller;
 import com.nexaai.chat.service.FeedbackService;
+import com.nexaai.chat.service.ConversationService;
 import com.nexaai.chat.service.MessageService;
 import com.nexaai.chat.web.dto.EditMessageRequest;
 import com.nexaai.chat.web.dto.FeedbackRequest;
@@ -14,6 +17,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,12 +27,18 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * Messages: sending, reading, regenerating, editing, and rating.
  *
  * <p>Every route is scoped to the caller. Messages are addressed by their own id and ownership is
  * checked against both the message and its conversation, so a mismatched pair cannot be acted on.
+ *
+ * <p><strong>The streamed send is a separate route, not a flag on the existing one.</strong> A
+ * single route that sometimes streams and sometimes does not has no content type a client can
+ * commit to in advance, and a caller has to discover the mode from the response — which it can
+ * only do after it has already chosen how to read the body.
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -38,10 +48,67 @@ public class MessageController {
 
     private final MessageService messages;
     private final FeedbackService feedback;
+    private final AiServiceStreamClient streamClient;
+    private final ChatProperties properties;
+    private final ConversationService conversations;
 
-    public MessageController(MessageService messages, FeedbackService feedback) {
+    public MessageController(MessageService messages, FeedbackService feedback,
+                             AiServiceStreamClient streamClient, ChatProperties properties,
+                             ConversationService conversations) {
         this.messages = messages;
         this.feedback = feedback;
+        this.streamClient = streamClient;
+        this.properties = properties;
+        this.conversations = conversations;
+    }
+
+    // ------------------------------------------------------------------
+    // Streamed send
+    // ------------------------------------------------------------------
+
+    /**
+     * Streams a reply as Server-Sent Events.
+     *
+     * <p><strong>Relays AI Service's events, and does not interpret them.</strong> The event
+     * contract — {@code meta}, then {@code token}s, then {@code done} or {@code error} — is
+     * AI Service's, and this method deliberately has no second implementation of it to disagree
+     * with.
+     *
+     * <p><strong>The emitter timeout is not the generation timeout.</strong> It bounds how long
+     * this thread will hold the connection open with nothing to say. A provider may legitimately
+     * take minutes, and cutting the connection off mid-answer would leave the user with a partial
+     * message and no indication that anything failed.
+     *
+     * @param conversationId ownership is checked before anything is streamed
+     */
+    @PostMapping(value = "/conversations/{conversationId}/messages/stream",
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "Stream a reply",
+            description = "Emits meta, then one token event per chunk, then done — or a single "
+                    + "error. Progressive rendering depends on chunks arriving as they are "
+                    + "produced.")
+    public SseEmitter streamReply(@PathVariable UUID conversationId,
+                                  @Valid @RequestBody SendMessageRequest request) {
+        UUID owner = CurrentCaller.authUserId();
+
+        // Ownership is proven BEFORE a stream opens. A stream that opens and then 404s leaves the
+        // client holding a connection to nothing, and makes "you may not do this" look like a
+        // network failure. Another user's conversation raises the same 404 as a nonexistent one,
+        // so this cannot be used to discover real ids.
+        conversations.getOwned(owner, conversationId);
+
+        SseEmitter emitter = new SseEmitter(properties.getGeneration().getStreamTimeout().toMillis());
+
+        // Runs off the request thread: SseEmitter.send blocks until the browser consumes each
+        // frame, so doing this inline would pin a container thread for the whole generation.
+        Thread.ofVirtual().name("nexa-chat-stream-" + conversationId).start(() ->
+                streamClient.stream(conversationId, request.content(),
+                        request.model() == null || request.model().isBlank()
+                                ? properties.getGeneration().getDefaultModel()
+                                : request.model(),
+                        emitter));
+
+        return emitter;
     }
 
     // ------------------------------------------------------------------

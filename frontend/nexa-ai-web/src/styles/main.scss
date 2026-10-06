@@ -6,13 +6,21 @@
 //   2. tokens           design tokens (no output on their own)
 //   3. theme            maps Bootstrap's variables onto the tokens
 //   4. app              component styles, may use both
+//   5. chat             thread and composer
+//   6. markdown         assistant output: code, tables, maths
+//
+// markdown comes last because it scopes to `.markdown`, a class its own
+// components create. Nothing here depends on it, and nothing it does
+// depends on the rules above.
 //
 // Bootstrap is imported as SCSS rather than as prebuilt CSS so its Sass
 // variables can be overridden here. Importing the prebuilt file would leave the
 // kit's own variables in charge and the theme would not apply.
+//
 // =====================================================================
 
 @use 'bootstrap/scss/bootstrap';
 @use 'theme';
 @use 'app';
 @use 'chat';
+@use 'markdown';

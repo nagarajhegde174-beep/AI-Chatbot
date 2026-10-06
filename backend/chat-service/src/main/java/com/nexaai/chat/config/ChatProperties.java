@@ -153,7 +153,50 @@ public class ChatProperties {
         /** Where generation is attempted when enabled. Unused while disabled. */
         private String aiServiceUrl = "http://localhost:8084";
 
+        /**
+         * The AI Service generate-stream path, relative to {@link #aiServiceUrl}.
+         *
+         * <p>Configurable rather than hard-coded so this service does not have to be recompiled
+         * when AI Service moves an internal route. It is a path, not a full URL: composing it
+         * here keeps the AI Service host in exactly one property, so a deployment cannot end up
+         * with two different hosts depending on which route was used.
+         */
+        private String streamPath = "/internal/v1/ai/generate/stream";
+
+        /**
+         * The timeout for a BLOCKING generation.
+         *
+         * <p>Does not apply to the streamed path, which has no read timeout at all: a generation
+         * may legitimately take minutes and must not be cut off halfway, leaving the user with a
+         * partial answer and no error to explain it.
+         */
         private Duration timeout = Duration.ofSeconds(60);
+
+        public String getStreamPath() {
+            return streamPath;
+        }
+
+        public void setStreamPath(String streamPath) {
+            this.streamPath = streamPath;
+        }
+
+        /**
+         * How long the browser-facing SSE connection is held open with nothing to say.
+         *
+         * <p>Not a generation timeout. Generations legitimately take minutes, and cutting the
+         * connection off mid-answer would leave the user with a partial message and no error
+         * explaining it — worse than waiting. This bounds the case where AI Service accepted the
+         * request and then produced nothing at all.
+         */
+        private Duration streamTimeout = Duration.ofMinutes(5);
+
+        public Duration getStreamTimeout() {
+            return streamTimeout;
+        }
+
+        public void setStreamTimeout(Duration streamTimeout) {
+            this.streamTimeout = streamTimeout;
+        }
 
         /** The model used when a conversation does not pin one. */
         private String defaultModel = "nexa-default";

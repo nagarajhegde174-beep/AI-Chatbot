@@ -330,13 +330,86 @@ services:
       NEXA_CHAT_JWT_PUBLIC_KEY: ${NEXA_AUTH_JWT_PUBLIC_KEY:-}
       NEXA_CHAT_JWT_ISSUER: ${NEXA_AUTH_JWT_ISSUER:-nexa-auth-service}
       NEXA_CHAT_JWT_AUDIENCE: ${NEXA_AUTH_JWT_AUDIENCE:-nexaai-web}
-      # OFF: there is no AI Service yet, so a sent message leaves a PENDING
-      # placeholder rather than a fabricated reply or a false error.
+      # OFF: a sent message leaves a PENDING placeholder rather than a
+      # fabricated reply or a false error. The STREAM endpoint is available
+      # regardless, so the frontend's streaming path is reachable for manual
+      # testing even while blocking generation is disabled.
       NEXA_CHAT_GENERATION_ENABLED: "false"
+      # Where the relayed stream comes from. Not a depends_on: Chat Service
+      # must start and serve history with AI Service down, and a stream that
+      # cannot connect reports itself as one error event rather than the
+      # service refusing to boot.
+      NEXA_CHAT_GENERATION_AI_SERVICE_URL: "http://ai-service:8084"
       NEXA_CHAT_EVENT_ENABLED: "false"
     depends_on:
       postgres:
         condition: service_healthy
+
+  # ----------------------------------------------------------- ai-service --
+  # Stateless multi-model inference. Owns NO DATABASE.
+  #
+  # Depends on NOTHING. There is no database to wait for, no broker and no
+  # upstream dependency, which is what "stateless" buys: the service either
+  # starts or there is nothing to wait for.
+  #
+  # NO GATEWAY ROUTE EXISTS FOR THIS SERVICE, on purpose. It is an internal
+  # surface and the only provider credentials in the platform live behind it.
+  # Publishing it through the gateway would put those one hop from the
+  # internet; the browser reaches generation only through Chat Service.
+  ai-service:
+    <<: *service-defaults
+    profiles: [backend]
+    build:
+      context: ../backend/ai-service
+      dockerfile: Dockerfile
+    image: nexaai/ai-service:0.1.0-SNAPSHOT
+    container_name: nexa-ai-service
+    ports:
+      - "${AI_SERVICE_PORT:-8084}:8084"
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8084
+      # PUBLIC key only. This service verifies tokens and never signs one, so
+      # there is deliberately no private-key variable for it.
+      NEXA_AI_JWT_PUBLIC_KEY: ${NEXA_AUTH_JWT_PUBLIC_KEY:-}
+      NEXA_AI_JWT_ISSUER: ${NEXA_AUTH_JWT_ISSUER:-nexa-auth-service}
+      NEXA_AI_JWT_AUDIENCE: ${NEXA_AUTH_JWT_AUDIENCE:-nexaai-web}
+
+      # "none" is REQUIRED, not a placeholder. Spring AI's provider
+      # auto-configurations use matchIfMissing=true on spring.ai.model.chat,
+      # so LEAVING IT UNSET activates every provider on the classpath and each
+      # one then fails startup demanding an api-key. A value matching no
+      # provider disables them, and the service starts with every provider
+      # reporting itself unavailable -- which is a supported state, not a
+      # failure. See backend/ai-service/src/main/resources/application.yml.
+      NEXA_AI_SPRING_MODEL_CHAT: "none"
+
+      # Provider credentials. Empty means the provider is UNAVAILABLE and says
+      # so at /internal/v1/ai/models. They are never logged and never returned
+      # by any endpoint.
+      #
+      # Set NEXA_AI_SPRING_MODEL_CHAT to a provider name AND its
+      # chat-model-bean below to enable that provider.
+      NEXA_AI_PROVIDER_OPENAI_ENABLED: "${OPENAI_ENABLED:-false}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      NEXA_AI_OPENAI_CHAT_MODEL_BEAN: "${OPENAI_CHAT_MODEL_BEAN:-}"
+      NEXA_AI_OPENAI_STREAMING_MODEL_BEAN: "${OPENAI_STREAMING_MODEL_BEAN:-}"
+
+      NEXA_AI_PROVIDER_GEMINI_ENABLED: "${GEMINI_ENABLED:-false}"
+      GOOGLE_GENAI_API_KEY: "${GOOGLE_GENAI_API_KEY:-}"
+      NEXA_AI_GEMINI_CHAT_MODEL_BEAN: "${GEMINI_CHAT_MODEL_BEAN:-}"
+      NEXA_AI_GEMINI_STREAMING_MODEL_BEAN: "${GEMINI_STREAMING_MODEL_BEAN:-}"
+
+      NEXA_AI_PROVIDER_GROQ_ENABLED: "${GROQ_ENABLED:-false}"
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      NEXA_AI_GROQ_CHAT_MODEL_BEAN: "${GROQ_CHAT_MODEL_BEAN:-}"
+      NEXA_AI_GROQ_STREAMING_MODEL_BEAN: "${GROQ_STREAMING_MODEL_BEAN:-}"
+
+      # Model routing policy.
+      NEXA_AI_DEFAULT_MODEL: "${AI_DEFAULT_MODEL:-nexa-default}"
+      NEXA_AI_RETRY_ENABLED: "${AI_RETRY_ENABLED:-true}"
+      NEXA_AI_RETRY_MAX_ATTEMPTS: "${AI_RETRY_MAX_ATTEMPTS:-3}"
+      NEXA_AI_USAGE_ENABLED: "${AI_USAGE_ENABLED:-true}"
 
   # ===========================================================================
   # EDGE PROXY

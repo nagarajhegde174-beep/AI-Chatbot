@@ -29,9 +29,9 @@ Each service becomes its own independent Spring Boot application, with its own `
 configuration, source tree, tests and Dockerfile **when that service is implemented in its
 explicitly authorised phase**.
 
-**Four are implemented: `api-gateway`, `auth-service`, `user-service` and `chat-service`.** 347
-tests pass across them. The other four directories hold a README describing their boundary and
-nothing else.
+**Five are implemented: `api-gateway`, `auth-service`, `user-service`, `chat-service`
+and `ai-service`.** 469 tests pass across them. The other three directories hold a README
+describing their boundary and nothing else.
 
 Unimplemented service directories must remain **non-functional** and must **not** receive fake
 Spring Boot applications, fake controllers, fake business logic, or fake Dockerfiles.
@@ -44,8 +44,8 @@ implemented only when its phase has been explicitly authorised and completed.
 | `api-gateway` | 8080 | *none* | Public entry. Token validation, routing, CORS, correlation ids. **No rate limits yet** |
 | `auth-service` | 8081 | `nexa_auth` | Credentials, tokens, account status |
 | `user-service` | 8082 | `nexa_user` | Profile, preferences, administration |
-| `chat-service` | 8083 | `nexa_chat` | Conversations, messages, history, feedback. **SSE and memory not yet** |
-| `ai-service` | 8084 | *none* | Stateless multi-model inference |
+| `chat-service` | 8083 | `nexa_chat` | Conversations, messages, history, feedback. **Relays the SSE stream; blocking generation and memory window not yet** |
+| `ai-service` | 8084 | *none* | **Implemented.** Stateless multi-model inference: model router, fallback, retry, availability, health, usage, SSE. No gateway route, by design |
 | `document-service` | 8085 | `nexa_document` | Upload, extraction, chunking |
 | `rag-service` | 8086 | `nexa_rag` | Embeddings, pgvector retrieval |
 | `subscription-service` | 8087 | `nexa_subscription` | Plans, entitlements, Razorpay test orders |
@@ -133,6 +133,22 @@ hold only a README each.
   hash verification.
 - **Documentation is source code** and lives in the same change as the code.
 
+- **`matchIfMissing = true` reads backwards.** On Spring AI's `spring.ai.model.chat` it means
+  *absent configuration activates every provider*, each then demanding a key. A service where a
+  provider credential is legitimately optional cannot use a library that fails startup without one.
+- **Assert on the wire format, not on a return value.** Three Phase 4 defects existed only in the
+  bytes: a `.formatted()` bound to the wrong literal so every stream ended in `error`; a trailing
+  comma making the first SSE frame invalid JSON; and `event:`/`data:` relayed as two frames
+  instead of one.
+- **A test config file that shadows production config is worse than no test.** Spring Boot loads
+  one resource per location and never merges them, so the tests were exercising a file that ships
+  to nobody. Overlay a profile; never shadow.
+- **Token fixture data must satisfy the same constraints production data does.** A test subject
+  that was not a UUID turned every "valid token" test into a silent assertion of 401.
+- **A wrapped comment whose continuation lines start with prose fails its own CI rule.** Rule R5
+  strips comment lines *starting* with a marker; prefix every line of an XML comment.
+
+---
 ---
 
 ## 7. Phase boundaries — non-negotiable

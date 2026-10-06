@@ -31,6 +31,19 @@
   --nexa-danger: #b3261e;
   --nexa-shadow-color: 18 18 43;
 
+  // Rendered model output: code blocks, inline code and their chrome.
+  //
+  // Declared per theme rather than once, because a code block has to stay
+  // legible against whichever message background it lands on. An undefined
+  // custom property is not "transparent" -- it makes the whole declaration
+  // invalid at computed-value time, so these must exist in BOTH themes or the
+  // light-mode block silently loses its background and border.
+  --nexa-code-bg: #f6f8fa;
+  --nexa-code-bar-bg: #eaeef2;
+  --nexa-code-border: #d6dce2;
+  --nexa-code-inline-bg: #eceff3;
+  --nexa-code-inline-fg: #1f2933;
+
   // Remap Bootstrap onto the tokens above.
   --bs-body-bg: var(--nexa-bg);
   --bs-body-color: var(--nexa-text);
@@ -68,6 +81,16 @@
   --nexa-success: #4ade80;
   --nexa-warning: #fbbf24;
   --nexa-danger: #f87171;
+
+  // Dark values for rendered model output. The highlight.js theme imported in
+  // _markdown.scss is dark in both themes, so the block chrome has to be dark
+  // too -- a light code block inside a dark message bubble is unreadable, and
+  // it is worse than either being consistent.
+  --nexa-code-bg: #10101c;
+  --nexa-code-bar-bg: #1a1a2e;
+  --nexa-code-border: #2e2e4d;
+  --nexa-code-inline-bg: #1e1e36;
+  --nexa-code-inline-fg: #e2e2f2;
   --nexa-shadow-color: 0 0 0;
 
   --bs-body-bg: var(--nexa-bg);

@@ -516,8 +516,8 @@ ahead.
 | 1 | Auth Service: registration, sign-in, tokens, RBAC, Google OAuth | Complete |
 | 2 | User Service + API Gateway: profile, preferences, administration, routing, edge auth | Complete |
 | 3 | Chat Service + frontend foundation: conversations, messages, feedback, export | Complete |
-| 4 | AI Service: Spring AI providers, streaming. Completes the `ChatGenerationPort` seam | Not started |
-| 5 | Chat: streaming relay (SSE), memory window | Not started |
+| 4 | AI Service: Spring AI providers, streaming. Completes the `ChatGenerationPort` seam | Complete |
+| 5 | Chat: memory window, message persistence of generated replies | Not started |
 | 6 | Document Service: upload, extraction, chunking | Not started |
 | 7 | RAG Service: embeddings, pgvector, retrieval | Not started |
 | 8 | RAG integration: grounded answers, citations | Not started |
@@ -588,7 +588,99 @@ first.
 
 ---
 
-## 17. Current implementation status
+## 16b. Spring AI 2.0.1 findings
+
+Every item here was found by the service failing to start or a test failing. Each is a property of
+Spring AI 2.0.1, not a preference, and each one is silent — the symptom is always "it works,
+except…".
+
+### 16b.1 `spring.ai.model.chat` is single-valued and inverts on absence
+
+Both the OpenAI and the Google Gemini auto-configurations are annotated:
+
+```java
+@ConditionalOnProperty(name = "spring.ai.model.chat",
+                       havingValue = "openai",     // or "google-genai"
+                       matchIfMissing = true)
+```
+
+`matchIfMissing = true` reads as "enable this when the operator has not chosen a provider". It
+does the opposite. **Absent property activates both**, and each then throws because no api-key is
+set:
+
+```
+Incomplete Google GenAI configuration: Provide 'api-key' for Gemini API or 'project-id' ...
+```
+
+So merely having the starters on the classpath means the process cannot start on a machine that has
+never heard of Google. Setting the property to a value that matches neither provider (`none`)
+disables both, and the service then starts with every provider reporting itself unavailable — which
+is the required behaviour here, because **a provider with no credential must be a supported state,
+not a boot failure.**
+
+`spring.ai.model.chat` also holds exactly one provider name, not a list. Serving three providers
+from one process is therefore not something that property can do, which is why `nexa.ai.providers`
+exists as a per-provider map that names its own Spring AI bean.
+
+### 16b.2 The non-chat auto-configurations demand credentials too
+
+`spring-ai-starter-model-openai` contributes six auto-configurations. Only `OpenAiChat*` is gated by
+`spring.ai.model.chat`; the embedding, image, audio-speech, audio-transcription and moderation ones
+activate on their own properties with `matchIfMissing = true` and each fails startup wanting a
+credential this service has no use for:
+
+```
+At least one credential source must be specified: credential (apiKey), workloadIdentity, or adminApiKey
+```
+
+They are excluded explicitly in `application.yml` via `spring.autoconfigure.exclude`. That is not
+tidiness — it is what lets the service start with no keys at all.
+
+### 16b.3 The chat API lives in `spring-ai-model`, reached through `spring-ai-client-chat`
+
+`Prompt`, `ChatResponse`, `ChatModel`, `StreamingChatModel`, the message types and `Usage` are in
+`spring-ai-model`. The starters reach it only transitively, through `spring-ai-client-chat`, so
+`spring-ai-client-chat` is declared as a direct dependency. Compiling against a
+transitively-present API and losing it on a dependency bump is a break that arrives in a release
+rather than in a review.
+
+### 16b.4 There is no Groq starter
+
+Groq speaks the OpenAI wire protocol. It is served by the OpenAI integration with a different base
+URL and a different credential, which is why the configuration looks like two OpenAI providers when
+only one of them is OpenAI.
+
+### 16b.5 Constructor shapes differ from Spring AI 1.x
+
+`OpenAiChatModel.Builder` takes `options(OpenAiChatOptions)`, not `defaultOptions(...)`, and
+requires a `com.openai.client.OpenAIClient`. `Prompt.Builder` has no `options(...)` method — options
+are supplied to the `Prompt` constructor. Both were found by compiling; neither is discoverable from
+the documentation.
+
+## 16c. Generation is wired through a stream, not through `ChatGenerationPort`
+
+The streamed path is complete end to end: browser → Chat Service → AI Service → Spring AI → provider.
+The blocking `ChatGenerationPort` still resolves to `DisabledChatGenerationPort`.
+
+The reason is a deliberate choice, not an oversight. `ChatGenerationPort.generate(...)` takes a
+conversation, a message and a placeholder, and has no authenticated caller on its signature — it is
+called from `MessageService` with no token in scope. Forwarding the user's token would mean either
+storing the raw token on the security context, which `AuthenticatedCaller.getCredentials()`
+deliberately refuses to do, or widening the port's contract to take a credential, which would put a
+bearer token into a method signature that the append-only message history would eventually be asked
+to serialise.
+
+The correct fix is a **service credential**: Auth Service issues a token with a service identity
+that names the user it is acting for, and Chat Service forwards that instead of the user's own
+token. That is an impersonation flow and a token-lifetime decision, so it belongs to its own
+change rather than being smuggled in here.
+
+What *was* built for it: `CallTokenHolder`, a request-scoped holder the JWT filter populates and
+clears in a `finally`, used only by the streaming client. It is deliberately **not** a field on
+`AuthenticatedCaller`, because the authentication object travels through the security context, the
+audit trail and log statements, and the principal must not be able to read its own credential.
+
+---
 
 | Service | Port | Status |
 |---|:--:|---|
@@ -596,12 +688,13 @@ first.
 | user-service | 8082 | **Implemented.** 120 tests pass against real PostgreSQL 17 |
 | api-gateway | 8080 | **Implemented.** 51 tests pass, over real HTTP |
 | chat-service | 8083 | **Implemented.** 92 tests pass against real PostgreSQL 17 |
-| ai-service | 8084 | Not started |
+| ai-service | 8084 | **Implemented.** 119 tests. Stateless — owns no database |
 | document-service | 8085 | Not started |
 | rag-service | 8086 | Not started |
 | subscription-service | 8087 | Not started |
 
-**256 tests pass across the three implemented services.**
+**469 tests pass across the five implemented services:** auth 87, user 120, api-gateway 51,
+chat 92, ai 119.
 
 **Verified for auth-service:** registration, sign-in, RS256 tokens in HTTP-only cookies, refresh
 rotation with reuse detection, logout, email verification, password reset and change, Google OAuth,
@@ -625,6 +718,21 @@ to one that does not exist, and that an ADMIN can read metadata but is given no 
 user's message content. Database isolation proven by connecting as the application role and being
 refused.
 
+**Verified for ai-service:** model selection (default, named, case-insensitive, unknown is a 400
+listing the real names), same-provider fallback, opt-in cross-provider fallback, bounded retry with
+capped backoff, provider-failure classification, token-limit enforcement, refusal of a
+temperature a model does not support, availability with a reason for every unavailable provider,
+provider health, in-memory usage, and Server-Sent Events streaming asserted against the wire
+format. Authorization proven with forged, unsigned (`alg: none`), algorithm-confused, expired,
+wrong-issuer and wrong-audience tokens, and with an assertion that no response body ever contains
+a provider credential.
+
+**Not yet wired:** the blocking `ChatGenerationPort` in Chat Service still resolves to
+`DisabledChatGenerationPort`, so a sent message leaves a `PENDING` placeholder. The streamed path
+IS wired end to end (browser → Chat Service → AI Service). The reason is in §16c — closing the
+blocking path properly needs a service credential rather than relaying the user's own token, and
+that is a decision, not a detail.
+
 **Verified for the frontend:** it compiles, type-checks under `strict`, lints, and builds; the
 theme tokens and Bootstrap variable overrides reach the built CSS; no credential appears in the
 bundle. Routing, shell, auth pages, chat layout, sidebar, conversation list, message components,
@@ -632,7 +740,7 @@ loading/error/empty states, the responsive drawer and the theme foundation are a
 type-checked.
 
 **Not yet wired:** AI generation. The `ChatGenerationPort` seam exists with no implementation, so
-a sent message creates a PENDING placeholder and it stays PENDING � which is the honest state, not
+a sent message creates a PENDING placeholder and it stays PENDING � which is the honest state, not
 a fabricated reply and not a false error.
 
 **Not yet wired:** Kafka publishing (auth-service's outbox is written but no broker was available;
