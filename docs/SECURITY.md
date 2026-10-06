@@ -97,6 +97,39 @@ token signed with the public key, are both rejected. This is tested
 anything prefixed `VITE_` is public ([`RULES.md`](RULES.md) §6). Only the AI Service holds those
 keys.
 
+This is enforced by three independent properties, not by convention:
+
+1. **No gateway route exists for AI Service.** The service is reachable only from Chat Service on
+   the internal network. Publishing it would put every provider credential one hop from the
+   internet, with nothing but a future route change standing between them and a browser.
+2. **The only credential the browser can send is a cookie.** The streaming client in
+   `frontend/nexa-ai-web/src/api/stream.ts` reads the CSRF cookie and nothing else. There is no
+   `Authorization` header, no `VITE_*` credential, and no code path that could construct one.
+3. **No response ever contains a key.** Availability reasons, health snapshots and usage records
+   are asserted by `NoCredentialExposure` in `AiAuthorizationTest` to contain no credential
+   pattern — an availability reason is exactly the sort of text someone pastes a key into by
+   accident, because it is the one place an operator looks first when a provider is "not working".
+
+**Token relay, and why it is scoped.** Chat Service forwards the caller's own access token to AI
+Service so the request that reaches a model is attributable to the user who made it rather than to
+Chat Service asking anonymously. The token is held in `CallTokenHolder`, a request-scoped bean, and
+**not** on `AuthenticatedCaller` — whose `getCredentials()` deliberately returns null, because the
+authentication object travels through the security context, the audit trail and log statements, and
+the principal must not be able to read its own credential. The holder is cleared in a `finally`, so
+a mid-request exception cannot leave a credential attached to a pooled thread that Tomcat then
+hands to the next request.
+
+**Service-to-service authentication is relay, not a second identity.** AI Service verifies the
+same token it would verify from a browser, with the same RS256 public key. That is weaker than a
+service credential carrying its own identity, and deliberately so for now: a second token type
+means a second issuer path, a second audience and a second thing to get wrong. The gap is recorded
+rather than papered over — see [`ARCHITECTURE.md`](ARCHITECTURE.md) §16c.
+
+**What a provider credential can reach, and who can reach it.** An AI Service key is billable
+capacity. The blast radius of leaking one is therefore bounded by three things: it is never in the
+bundle, never in a response, and never loggable — `SpringAiProviderClient` logs a provider id and
+the *fact* that a credential is present, never the value.
+
 `localStorage` is readable by any script on the origin. A cross-site scripting bug therefore
 becomes a credential theft bug, which is why §8 treats XSS as a security requirement and not
 just a rendering bug.

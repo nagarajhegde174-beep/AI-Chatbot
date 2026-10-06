@@ -166,26 +166,122 @@ producing a 504 rather than a hang, JWKS, and `/.well-known/jwks.json`.
       loading/error/empty states, responsive drawer and theme foundation all present
 - [ ] Component tests and E2E sign-in flow - **not built.** This is a real gap, recorded here
       rather than implied. The frontend has no test runner configured in this phase.
-### Phase 4 — AI Service
-- [ ] Unit: provider selection, parameter mapping, error classification
-- [ ] Integration: each provider, streaming and non-streaming, against a **recorded** or stubbed
-      response — never a live paid call in CI
-- [ ] **Statelessness: the service starts and serves with no datasource configured**
-- [ ] Security: no prompt text and no API key in any log
-- [ ] Resilience: circuit breaker opens after repeated failures and recovers
-- [ ] Contract: `ai.inference.completed.v1` carries accurate token counts
+### Phase 4 - AI Service
 
-### Phase 5 - Chat streaming (SSE) on the existing Chat Service
+**119 tests pass. `mvn clean verify` green. No database, no provider credential, no network.**
 
-Chat Service itself was built in Phase 3. This phase adds the streamed turn on top of it.
-- [ ] Unit: memory window assembly, token-budget trimming, stream state machine
-- [ ] Integration: full message lifecycle with a stubbed AI Service
-- [x] **Isolation: a USER cannot read or write another user's conversation** (Phase 3)
-- [ ] **Streaming: the first token is relayed before generation completes**
-- [ ] Streaming: an interrupted stream is stored as incomplete
-- [ ] Quota: the check happens *before* the provider is called
-- [ ] Contract: SSE event names and payload shapes match the contract document
+Routing and model selection, unit and over HTTP:
 
+- [x] An absent model name selects the configured default
+- [x] A known name selects that model; selection is case-insensitive
+- [x] **An unknown name is a 400 listing the real names**, never a silent substitution of the default
+- [x] A request reaches the provider that owns the chosen model
+- [x] A successful call is not reported as a fallback
+- [x] The model that **actually** answered is named in the response, with `fallbackUsed`
+- [x] `GET /models` lists every model, available or not, with a reason when unavailable
+
+Fallback:
+
+- [x] Falls back to another model on the **same** provider
+- [x] **A provider outage is not rescued by a sibling model** — the honest limit, asserted explicitly
+- [x] Does **not** cross to a different provider by default
+- [x] Crosses to another provider when the model opts in
+- [x] A rejected request is neither retried nor fallen back from
+- [x] `allowFallback: false` is honoured
+- [x] Every candidate unavailable gives a 503 naming each reason
+- [x] Fallback re-validates against the fallback model's own limits
+
+Retry and failure handling:
+
+- [x] A retryable failure is retried up to the limit, asserted by call count
+- [x] A non-retryable failure is **not** retried
+- [x] An exhausted retry gives up on that model and falls back
+- [x] Backoff grows exponentially and is capped
+- [x] Classification: 401, 429, context-length, 400, timeout and unknown are each mapped correctly
+- [x] A provider exception message never contains the prompt
+- [x] Three consecutive retryable failures mark a provider unhealthy
+- [x] **A rejected request does not mark a provider unhealthy** — it is up, and taking it out of rotation is wrong
+- [x] A success clears an unhealthy state
+
+Limits and parameters:
+
+- [x] Temperature is **refused** for a model that does not support it
+- [x] Temperature out of range is refused
+- [x] A supported temperature reaches the provider
+- [x] An absent temperature is passed as null, not as a guessed default
+- [x] `maxOutputTokens` above the model's limit is refused
+- [x] An over-long message is refused **before** any provider is contacted
+
+Streaming, asserted on the wire format:
+
+- [x] `meta`, then tokens, then `done`, in that order
+- [x] Every chunk arrives as its own `token` event
+- [x] `meta` is valid JSON; `done` carries the same request id
+- [x] A quote or newline in a token does not break the framing
+- [x] An unavailable provider yields one `error` event, not a truncated stream
+- [x] A mid-stream fault becomes an `error` event and **no** `done`
+- [x] `error` carries `retryable`, and it is false when retrying cannot help
+- [x] An unknown model and a blank message are refused before a stream opens
+- [x] A completed stream is recorded as streamed usage
+
+Authorization:
+
+- [x] Every route returns 401 without a token
+- [x] Forged, **unsigned (`alg: none`)**, **algorithm-confused**, expired, wrong-issuer and
+      wrong-audience tokens are each rejected
+- [x] A valid user token is accepted — Chat Service forwards the caller's own token
+- [x] An ADMIN token confers nothing extra; there is no admin-only route
+- [x] Health is public and reveals no configuration detail; other actuator endpoints are guarded
+- [x] **No response body contains the provider credential**, and no availability reason does
+
+Statelessness and configuration:
+
+- [x] The service starts and serves with **no datasource, no provider key and no network**
+- [x] A misspelled provider key is refused at startup rather than silently meaning nothing
+- [x] Usage records carry no prompt text and no user identity
+
+**Not covered, recorded rather than implied:**
+
+- [ ] **No live provider call has ever been made.** There are no credentials and no network in this
+      environment, so every provider interaction is exercised against a stub Spring AI `ChatModel`.
+      The translation layer, routing, failure classification and framing are all verified; the
+      providers themselves are not.
+- [ ] **A circuit breaker is not implemented.** Health tracking marks a provider unhealthy for 30 s
+      after three consecutive retryable failures and recovers on its own. That is a cooldown, not a
+      breaker with half-open probing, and the plan's wording overstated it.
+- [ ] **No Kafka topic is produced.** Usage is in memory and served over HTTP, because the service
+      owns no database. `UsageSink` is the seam a later phase replaces.
+- [ ] **No blocking generation from Chat Service.** `ChatGenerationPort` still resolves to
+      `DisabledChatGenerationPort`; see `ARCHITECTURE.md` §16c for why, and why the right fix is a
+      service credential rather than relaying the user's token.
+
+**Frontend streaming. Built; not covered by automated tests.**
+
+- [x] Type-checks under `strict`, lints with 0 errors, builds
+- [x] SSE read over `fetch` with a hand-written frame parser, because frames split across network
+      chunks and a parser that assumes otherwise drops or duplicates text depending on timing
+- [x] Progressive rendering: plain text while tokens arrive, rendered once on completion
+- [x] Markdown, GFM tables, KaTeX maths, highlighted code blocks, per-block copy
+- [x] Stop aborts the request and **keeps** the text that arrived
+- [x] Retry re-opens the stream only, and is offered only when the server said retrying could help
+- [x] `prefers-reduced-motion` honoured
+- [x] No credential in `dist/`
+- [x] **No provider endpoint is reachable from the browser** — the only credential it can send is a
+      cookie, and AI Service has no gateway route
+- [x] **KaTeX and highlight.js loaded on demand.** ~132 kB gzipped that most users never need
+- [x] **Initial JavaScript 156.7 kB gzipped**, within the 200 kB budget; total 288.5 kB within the
+      320 kB ceiling. The previous check summed every chunk against the *initial* budget, so it
+      could only be satisfied by deleting the feature -- see ARCHITECTURE.md 9.2a
+- [ ] **Component tests and E2E** — still not built. There is no frontend test runner, so the
+      streaming parser and the Markdown renderer are verified by inspection and by type-checking
+      only. This is the same gap recorded in Phase 3 and it is now larger.
+
+### Phase 5 - Chat memory window
+- [ ] The window actually sent to a model is the last N turns, not the whole history
+- [ ] A token estimate is recorded and a too-large window is refused, not silently truncated
+- [ ] A generated reply is persisted on the message row, so a reload shows the same text
+- [ ] A `PENDING` placeholder stuck from a crash is reconciled rather than shown forever
+- [ ] Generation through `ChatGenerationPort` using a **service credential** (`ARCHITECTURE.md` §16c)
 ### Phase 6 — Document Service
 - [ ] Unit: chunking preserves sentence boundaries, size and overlap respected
 - [ ] Integration: upload, extract, chunk against real PostgreSQL and real files
@@ -406,6 +502,68 @@ tests that execute what exists.
    beside an `enum` that serialises to `LIGHT` is a defect that no compiler finds and that only
    surfaces on the first real write.
 
+### 7.2c Defects found in Phase 4, and what they teach
+
+Phase 4 produced **the highest count of silent-failure defects of any phase**, and that is the
+finding. Every one of these produced a *running, healthy application that answered every request
+wrongly*, or a stream that looked fine and delivered nothing.
+
+| Defect | Consequence had it shipped |
+|---|---|
+| `spring.ai.model.chat` was left unset | Both provider auto-configurations activate on `matchIfMissing = true` when the property is **absent**, then each throws wanting a key. **The service cannot start on a machine with no credentials** — inverting the whole "no key is a supported state" design |
+| OpenAI's embedding/image/audio/moderation auto-configurations were left enabled | Each activates on its own properties and fails startup demanding a credential this service has **no use for**. Same outcome, different route |
+| Provider map keys were looked up as `"OPENAI"` while YAML writes `openai:` | Spring binds map keys **exactly as written**, so every provider reported "not configured". The service started, was healthy, and could never call anything |
+| `SpringAiProviderClient` was annotated `@Component` with a `ProviderKind` constructor parameter | Component scanning cannot supply it: **the context failed to start**, in a way that only an integration test would surface |
+| `"…" + "…%d}".formatted(x)` — concatenation *before* `.formatted` | `.formatted` binds to the adjacent literal only, so two placeholders got one argument. **Every stream ended in `error` instead of `done`** after delivering the complete answer |
+| The `meta` event's JSON ended with a trailing comma | Invalid JSON in the **first frame of every stream** |
+| SSE frames were relayed line by line instead of re-assembled | `event:` and `data:` are **one frame**. Forwarding them as two sends produces two malformed events and a browser that receives neither |
+| The JWT filter did not run on the async dispatch | Streaming responses arrived unauthenticated and Spring Security **refused an endpoint the caller had already been admitted to** — with the response half-written, so the failure could not even be reported |
+| A `pom.xml` comment mentioned `datasource` and `Flyway` on continuation lines | CI rule R5 strips only comment lines **starting** with a marker, so a wrapped XML comment **fails its own rule** and would have broken every build |
+| The test `application.yml` shadowed the production one | Spring Boot loads **one resource per location and never merges them**. The tests exercised a configuration that **ships to nobody**, and every regression in the real file would have passed CI |
+| `ProviderHealth` is a process-wide singleton | Test pollution, but the real finding is that **state leaks between unrelated tests** and the resulting failures look like routing bugs rather than test pollution |
+| The bundle check summed **every** chunk in `dist` and compared it to the **initial** 200 kB budget | It measured a different quantity than the budget describes, and made code-splitting **strictly worse**: deferring code changed nothing for the check while genuinely improving what a user downloads. The only way to satisfy it was to delete the feature |
+| A hand-written `advancedChunks` group matched `/remark-\|rehype-/` into the "math" chunk | It swallowed `remark-gfm`, a **static** dependency of the plain renderer, so the maths chunk was back on the critical path despite being dynamically imported. The 88 kB the lazy load was supposed to remove was still being downloaded |
+| The budget script traversed the manifest by output path instead of manifest key | Vite keys chunks by name (`_math-abc.js`) and emits them at a path (`assets/math-abc.js`). Resolving on the wrong one finds nothing, reports a **near-zero payload, and passes** |
+
+**Seven lessons worth carrying forward.**
+
+1. **`matchIfMissing = true` reads backwards.** It does not mean "enable when the operator has not
+   chosen"; on a provider selector it means *absent configuration activates everything*. Every
+   third-party auto-configuration has to be read, not trusted.
+2. **A library that fails startup when an optional credential is absent is unusable in a service
+   where that credential is legitimately optional.** The fix is not to supply a dummy key; it is to
+   exclude the auto-configurations and say why.
+3. **Assert on the wire format, not on the return value.** Three of the defects above are
+   invisible to a test that calls the method and inspects what comes back. They exist only in the
+   bytes.
+4. **Configuration keys are case-sensitive and preserved exactly as written.** Anything read from a
+   `Map<String, …>` bound from YAML needs normalising, and an assertion that a provider is
+   "configured" is what catches it.
+5. **A test configuration file that replaces production configuration is worse than no test.** It
+   reports green while testing something that does not ship. Overlay a profile; never shadow.
+6. **A check that measures a different quantity than its budget describes is worse than no check.**
+   The bundle check summed every chunk and compared it to an *initial-load* budget, so the only way
+   to make it pass was to remove the feature it was protecting. When a check fails, read what it
+   measures before deciding whether the code or the number is wrong.
+7. **A budget check that cannot fail is not a check.** Two of the defects above produce a *passing*
+   check. The replacement script was verified to fail when each cap is lowered below the measured
+   value, and to fail loudly when its input is missing -- because the previous generation of this bug
+   was a measurement that silently reported zero.
+
+### 7.2d The one that testing did not catch, and should have
+
+`JwtVerifier.subjectOf` parses the token subject as a UUID and throws `IllegalArgumentException` on
+anything else — which the filter catches and turns into "no authentication". The test tokens used
+subjects like `"nexa-user"`, so **every valid-token test was silently asserting a 401 and calling it
+success** until the assertion on the expected status was read properly.
+
+The fix was to make the test tokens realistic. The durable lesson: **a token fixture that is less
+realistic than production will quietly turn a success assertion into a failure assertion**, because
+both are `status == X` and only one of them is what you meant. Test data has to satisfy the same
+constraints production data does, and the negative-path tests here would have failed loudly while
+the positive ones passed for the wrong reason.
+
+---
 ### 7.3 CI rule checks are themselves tested
 
 The architecture rule checks were run against the real repository rather than assumed correct.

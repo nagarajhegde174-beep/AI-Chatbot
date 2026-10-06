@@ -106,15 +106,28 @@ jobs:
       - name: Bundle size against the budget
         run: |
           set -euo pipefail
-          # docs/ARCHITECTURE.md section 9: initial JS under 200 kB gzip.
-          js=$(find dist/assets -name '*.js' -exec gzip -c {} \; | wc -c)
-          kb=$((js / 1024))
-          echo "JavaScript, gzipped: ${kb} kB"
-          if [ "$js" -gt $((200 * 1024)) ]; then
-            echo "::error::JavaScript bundle is ${kb} kB gzipped, over the 200 kB budget. See docs/ARCHITECTURE.md section 9."
-            exit 1
-          fi
-          echo "ok: within the bundle budget"
+          # docs/ARCHITECTURE.md section 9.2 budgets INITIAL JavaScript at 200 kB gzip, and
+          # caps total JavaScript at 320 kB.
+          #
+          # WHY THIS IS A SCRIPT AND NOT A ONE-LINE `find | gzip | wc`
+          #
+          # The previous version summed every .js file in dist/assets and compared the
+          # result to the INITIAL budget. That measured a different quantity than the one
+          # the budget describes, and it made code-splitting strictly worse: moving code into
+          # a chunk changed nothing for the check while genuinely improving the number a
+          # user experiences. A check that penalises the technique it is meant to encourage
+          # gets satisfied by deleting the feature instead.
+          #
+          # So it is now two caps, both enforced:
+          #   initial - the static import closure of the HTML entry point, from the Vite
+          #             manifest. This is what a browser downloads before the page is usable.
+          #   total   - every chunk, including ones fetched only on demand. Capped
+          #             separately so deferring a dependency is free for first paint but not
+          #             free forever.
+          #
+          # The script also fails loudly if the manifest is missing or declares no entry,
+          # rather than reporting a near-zero payload and passing.
+          node scripts/check-bundle-budget.mjs
 
       - name: Upload the build output
         uses: actions/upload-artifact@v4

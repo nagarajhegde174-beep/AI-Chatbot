@@ -1,0 +1,101 @@
+# =====================================================================
+# AI Service test profile.
+#
+# =====================================================================
+#  This is a PROFILE overlay, not a replacement.
+#
+#  Naming this file application.yml would shadow src/main/resources/
+#  application.yml completely -- Spring Boot loads one resource per
+#  location and never merges them. The tests would then exercise a
+#  parallel configuration that ships to nobody, and every regression
+#  introduced in the real file would pass CI.
+#
+#  As application-test.yml, activated by @ActiveProfiles("test"), it
+#  layers ON TOP of the shipped file. Anything not overridden here comes
+#  from production, which is what makes these tests worth running.
+# =====================================================================
+#
+#  The OpenAI provider is wired to ProviderStubs' beans. That is what
+#  lets the HTTP tests run the real provider client, router and
+#  controller -- including bean lookup by name -- with no network and
+#  no credential.
+#
+#  The key below is a placeholder. It is never sent anywhere: the stub
+#  ChatModel never opens a socket. It exists only so the provider reads
+#  as configured.
+#
+#  The JWT public key is NOT here. It is generated per JVM and injected
+#  via @DynamicPropertySource, because a key in a file would mean a key
+#  in source.
+# =====================================================================
+nexa:
+  ai:
+    providers:
+      openai:
+        enabled: true
+        api-key: not-a-real-key-used-only-by-tests
+        chat-model-bean: testChatModel
+        streaming-model-bean: testStreamingChatModel
+
+    defaults:
+      model: nexa-default
+      # Immediate, so retry tests do not spend real time sleeping.
+      # The backoff schedule itself is asserted directly in RetryExecutor's test.
+      retry:
+        initial-backoff: 1ms
+        max-backoff: 2ms
+
+    usage:
+      enabled: true
+      retain-records: 100
+
+    models:
+      - name: nexa-default
+        provider: OPENAI
+        priority: 1
+        supports-temperature: true
+        max-input-tokens: 128000
+        max-output-tokens: 4096
+        allow-fallback: true
+
+      - name: nexa-openai-mini
+        provider: OPENAI
+        priority: 2
+        supports-temperature: true
+        max-input-tokens: 128000
+        max-output-tokens: 4096
+        allow-fallback: true
+
+      - name: nexa-gemini-flash
+        provider: GEMINI
+        priority: 1
+        supports-temperature: true
+        max-input-tokens: 1000000
+        max-output-tokens: 8192
+        allow-fallback: true
+
+      - name: nexa-groq-llama
+        provider: GROQ
+        priority: 1
+        supports-temperature: true
+        max-input-tokens: 128000
+        max-output-tokens: 4096
+        allow-fallback: true
+
+      - name: nexa-fixed
+        provider: OPENAI
+        priority: 5
+        supports-temperature: false
+        max-input-tokens: 128000
+        max-output-tokens: 8192
+        allow-fallback: false
+
+logging:
+  level:
+    root: WARN
+    com.nexaai.ai: WARN
+    # A rejected token is otherwise invisible: JwtAuthenticationFilter logs the reason at
+    # DEBUG, by exception TYPE only, so the token itself is never logged. That is the right
+    # production behaviour and the wrong thing to debug with -- a test that cannot see WHY a
+    # valid token was refused is a test that will be re-derived from scratch next time.
+    com.nexaai.ai.security: DEBUG

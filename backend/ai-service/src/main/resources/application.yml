@@ -1,0 +1,231 @@
+# =====================================================================
+# AI Service configuration.
+#
+# =====================================================================
+#  NO DATABASE. NONE. This service is stateless (CI rule R5).
+#
+#  There is no datasource, no Flyway and no migration here, and adding one
+#  must fail the build. An inference service that stored conversation state
+#  would have to own it, back it up, and could lose it; holding nothing is
+#  what makes it trivially scalable.
+# =====================================================================
+#
+# =====================================================================
+#  PROVIDER CREDENTIALS
+#
+#  Every key is an environment variable with an EMPTY default. Empty means
+#  "this provider is unavailable", which is a supported state reported by
+#  /internal/v1/ai/models with a reason. It is not a startup failure, and it
+#  is never defaulted to a shared value.
+#
+#  No key is ever logged, never returned by an endpoint, and never reaches
+#  the browser: this service is server-side only.
+# =====================================================================
+spring:
+  application:
+    name: ai-service
+
+  # -------------------------------------------------------------------
+  # Spring AI auto-configurations: only the CHAT ones are allowed.
+  #
+  # This service generates text. It embeds nothing, moderates nothing,
+  # synthesises no audio and generates no images -- so those
+  # auto-configurations are excluded outright.
+  #
+  # The reason is not tidiness. Each one activates on
+  # matchIfMissing=true for its own properties and then FAILS STARTUP
+  # demanding a credential this service has no use for. Left in, merely
+  # having the OpenAI starter on the classpath means the process cannot
+  # start without OPENAI_API_KEY set, which breaks this service's core
+  # rule that a provider with no credential is a supported state
+  # reported by /models rather than a boot failure.
+  #
+  # OpenAiChatAutoConfiguration is deliberately NOT excluded: setting
+  # NEXA_AI_SPRING_MODEL_CHAT=openai is how a deployment opts in to it.
+  # -------------------------------------------------------------------
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiTextEmbeddingAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.embedding.GoogleGenAiEmbeddingConnectionAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.image.GoogleGenAiImageAutoConfiguration
+      - org.springframework.ai.model.google.genai.autoconfigure.image.GoogleGenAiImageConnectionAutoConfiguration
+
+  # -------------------------------------------------------------------
+  # spring.ai.model.chat MUST BE SET, TO A VALUE THAT MATCHES NOBODY.
+  #
+  # Spring AI 2.0.1's OpenAI and Google auto-configurations both use:
+  #
+  #   @ConditionalOnProperty(name = "spring.ai.model.chat",
+  #                          havingValue = "openai" | "google-genai",
+  #                          matchIfMissing = true)
+  #
+  # The `matchIfMissing = true` is the trap. It reads as "enable this
+  # when the operator has not chosen", but it does the opposite: ABSENT
+  # activates BOTH, and each then throws because no api-key is set.
+  # Leaving this property out therefore fails startup with
+  # "Incomplete Google GenAI configuration" on a machine that has never
+  # heard of Google -- which is every machine without a key.
+  #
+  # Setting it to a value that matches neither provider disables both,
+  # and this service then starts cleanly with every provider reporting
+  # itself unavailable and a reason.
+  #
+  # That is required by this service's core rule: a provider with no
+  # credential is a SUPPORTED state, reported by /models, not a boot
+  # failure.
+  #
+  # To opt a deployment into Spring AI auto-configuring a provider bean,
+  # set this to that provider and point the matching nexa.ai.providers
+  # entry at the bean it creates:
+  #
+  #   NEXA_AI_SPRING_MODEL_CHAT=openai
+  #   spring.ai.openai.api-key=<key>       # set by the operator
+  #   nexa.ai.providers.openai.chat-model-bean: openAiChatModel
+  #
+  # This property holds exactly ONE provider name -- it is a single-value
+  # condition, not a list. Serving three providers from one process is
+  # why nexa.ai.providers exists: each entry names its own bean.
+  # -------------------------------------------------------------------
+  ai:
+    model:
+      chat: ${NEXA_AI_SPRING_MODEL_CHAT:none}
+
+server:
+  port: ${NEXA_AI_PORT:8084}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-exception: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+info:
+  app:
+    name: NexaAI AI Service
+    description: Stateless multi-model inference through Spring AI.
+    owns-database: none
+
+logging:
+  level:
+    root: INFO
+    com.nexaai.ai: ${NEXA_AI_LOG_LEVEL:INFO}
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%X{correlationId:--}] %-40.40logger{39} : %m%n"
+
+nexa:
+  ai:
+    jwt:
+      # Verification only. This service never signs a token, so there is
+      # deliberately no private-key property.
+      public-key: ${NEXA_AI_JWT_PUBLIC_KEY}
+      issuer: ${NEXA_AI_JWT_ISSUER:nexa-auth-service}
+      audience: ${NEXA_AI_JWT_AUDIENCE:nexaai-web}
+
+    defaults:
+      model: ${NEXA_AI_DEFAULT_MODEL:nexa-default}
+      temperature: ${NEXA_AI_DEFAULT_TEMPERATURE:0.7}
+      max-output-tokens: ${NEXA_AI_DEFAULT_MAX_OUTPUT_TOKENS:1024}
+      # Applied on top of any per-model limit. The caller is not the only
+      # party with an interest in the bill.
+      max-output-tokens-ceiling: ${NEXA_AI_MAX_OUTPUT_TOKENS_CEILING:8192}
+
+    retry:
+      enabled: ${NEXA_AI_RETRY_ENABLED:true}
+      max-attempts: ${NEXA_AI_RETRY_MAX_ATTEMPTS:3}
+      initial-backoff: ${NEXA_AI_RETRY_INITIAL_BACKOFF:250ms}
+      max-backoff: ${NEXA_AI_RETRY_MAX_BACKOFF:2s}
+
+    usage:
+      enabled: ${NEXA_AI_USAGE_ENABLED:true}
+      retain-records: ${NEXA_AI_USAGE_RETAIN_RECORDS:500}
+
+    # One entry per provider. chat-model-bean names the Spring AI ChatModel bean
+    # backing it. When that bean is absent the provider reports itself
+    # unavailable with a reason, rather than failing at startup.
+    providers:
+      openai:
+        enabled: ${NEXA_AI_PROVIDER_OPENAI_ENABLED:false}
+        api-key: ${OPENAI_API_KEY:}
+        base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+        chat-model-bean: ${NEXA_AI_OPENAI_CHAT_MODEL_BEAN:}
+      gemini:
+        enabled: ${NEXA_AI_PROVIDER_GEMINI_ENABLED:false}
+        api-key: ${GOOGLE_GENAI_API_KEY:}
+        base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+        chat-model-bean: ${NEXA_AI_GEMINI_CHAT_MODEL_BEAN:}
+      groq:
+        # The OpenAI wire protocol, so the same integration as OpenAI with a
+        # different base URL and a different credential.
+        enabled: ${NEXA_AI_PROVIDER_GROQ_ENABLED:false}
+        api-key: ${GROQ_API_KEY:}
+        base-url: ${GROQ_BASE_URL:https://api.groq.com/openai}
+        chat-model-bean: ${NEXA_AI_GROQ_CHAT_MODEL_BEAN:}
+
+    # The catalog.
+    #
+    # Fallback stays WITHIN a provider. A request for Gemini answered by Llama
+    # is a different product, not a graceful degradation, and the caller did
+    # not agree to it.
+    models:
+      - name: ${NEXA_AI_DEFAULT_MODEL:nexa-default}
+        provider: OPENAI
+        priority: 1
+        supports-temperature: true
+        max-input-tokens: 128000
+        max-output-tokens: 4096
+        allow-fallback: true
+
+      - name: nexa-openai-mini
+        provider: OPENAI
+        priority: 2
+        supports-temperature: true
+        max-input-tokens: 128000
+        max-output-tokens: 4096
+        allow-fallback: true
+
+      - name: nexa-gemini-flash
+        provider: GEMINI
+        priority: 1
+        supports-temperature: true
+        max-input-tokens: 1000000
+        max-output-tokens: 8192
+        allow-fallback: true
+
+      - name: nexa-groq-llama
+        provider: GROQ
+        priority: 1
+        supports-temperature: true
+        max-input-tokens: 128000
+        max-output-tokens: 4096
+        allow-fallback: true
+
+      # A model that does not accept a temperature. Declared so the refusal
+      # path is real: a provider that ignores an unsupported parameter produces
+      # a successful response, which means the parameter would appear to work
+      # while having no effect at all.
+      - name: nexa-reasoning-fixed
+        provider: GROQ
+        priority: 5
+        supports-temperature: false
+        max-input-tokens: 128000
+        max-output-tokens: 8192
+        allow-fallback: false
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

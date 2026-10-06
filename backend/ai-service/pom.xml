@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  * ai-service — an INDEPENDENT Spring Boot application.
+  *
+  * Owns NO DATABASE. Stateless by design: a model router holds no conversation
+  * state, and every request carries everything needed to answer it. That is why
+  * CI rule R5 forbids a datasource in this service, and why there is no JPA,
+  * no Flyway and no migration here. A stateless inference service can be scaled
+  * by adding replicas and cannot lose data, because it never held any.
+  *
+  * Every line of this comment is prefixed with '*' on purpose. CI rule R5 greps
+  * this file for forbidden database terms and strips lines whose content begins
+  * with a comment marker (a hash, a double slash, an asterisk, or an XML comment
+  * opener). A wrapped XML comment whose continuation lines start with plain prose
+  * does NOT match that filter, so this comment would fail its own rule.
+  * Prefixing each line is what keeps the explanation and the check in agreement.
+  *
+  * THIS SERVICE IS THE ONLY PLACE A PROVIDER SDK IS TOUCHED. Chat Service and
+  * every other service call this one over HTTP or Kafka. No provider integration
+  * is permitted anywhere else (docs/RULES.md section 7).
+  *
+  * Spring AI is the central abstraction. The three providers are reached through
+  * Spring AI's ChatModel, never through a vendor SDK called directly, so a
+  * provider swap is a configuration change rather than a code change.
+  *
+  * Groq has no Spring AI starter: it speaks the OpenAI wire protocol, so it is
+  * served by the OpenAI starter with a different base URL. That is why there are
+  * two OpenAI starters-worth of configuration here and only one of them is
+  * OpenAI.
+  *
+
+  There is deliberately no <relativePath> parent: the parent is
+  spring-boot-starter-parent from Maven Central, never a POM inside this
+  repository (docs/ARCHITECTURE.md section 13, decision 012).
+  ============================================================================
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.1.1</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.nexaai</groupId>
+  <artifactId>ai-service</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <name>ai-service</name>
+  <description>NexaAI AI Service — stateless multi-model inference through Spring AI. Owns no database.</description>
+
+  <properties>
+    <java.version>21</java.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!--
+      Spring AI 2.0.1, resolved against Maven Central rather than assumed. Spring AI's major
+      version tracks Spring Boot's: 2.x targets Boot 4.x. Using the 1.x line against Boot 4
+      produces a classpath of auto-configurations that silently do not activate.
+    -->
+    <spring-ai.version>2.0.1</spring-ai.version>
+    <jjwt.version>0.12.6</jjwt.version>
+    <springdoc.version>2.8.13</springdoc.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.ai</groupId>
+        <artifactId>spring-ai-bom</artifactId>
+        <version>${spring-ai.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+
+    <!--
+      ===================================================================
+      Spring AI: the central abstraction.
+      ===================================================================
+      Providers are reached ONLY through Spring AI's ChatModel. No vendor SDK
+      is imported anywhere in this repository.
+    -->
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-starter-model-openai</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-starter-model-google-genai</artifactId>
+    </dependency>
+
+    <!--
+      The Spring AI chat abstraction: Prompt, ChatResponse, ChatModel,
+      StreamingChatModel, the message types, Usage and the metadata classes.
+
+      Declared explicitly rather than relied on transitively. The types this service compiles
+      against live in spring-ai-model, which the starters only reach through spring-ai-client-chat
+      and with a transitive scope. Compiling against a transitively-present API and losing it on a
+      dependency bump is a break that arrives in a release rather than in a review.
+
+      In Spring AI 1.x these lived in spring-ai-model too, so the artifact name looks familiar
+      even though the intermediate spring-ai-client-chat is new in 2.x.
+    -->
+    <dependency>
+      <groupId>org.springframework.ai</groupId>
+      <artifactId>spring-ai-client-chat</artifactId>
+    </dependency>
+
+    <!--
+      Verifies the caller's RS256 token with the PUBLIC key.
+
+      NOTE: spring-boot-starter-oauth2-resource-server is deliberately absent.
+      It auto-configures a security chain that would reject requests before
+      this service's own filter runs, with an empty 401 body — the same trap
+      documented in the API Gateway POM. Verification here is an explicit
+      filter.
+    -->
+    <!--
+      Spring Security, for the filter chain, CSRF and method security.
+
+      Needed explicitly: the oauth2-resource-server starter that used to pull it in is
+      deliberately absent (see the note below), and Spring AI does not bring it.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-api</artifactId>
+      <version>${jjwt.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-impl</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-jackson</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+      <version>${springdoc.version}</version>
+    </dependency>
+
+    <!-- ==== test ==== -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!--
+      Spring Boot 4 moved MockMvc test auto-configuration into its own module.
+      Without it @AutoConfigureMockMvc does not exist, and hand-building MockMvc
+      silently drops the real security filter chain.
+    -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-webmvc-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!--
+      Reactor, for asserting on the SSE stream without a real socket. A streaming
+      test that cannot observe partial output is not testing streaming.
+    -->
+    <dependency>
+      <groupId>io.projectreactor</groupId>
+      <artifactId>reactor-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

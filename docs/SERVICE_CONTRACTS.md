@@ -626,7 +626,7 @@ Port 8083. Owns `nexa_chat`. Orchestrates a chat turn.
 conversation, and a second table would let the two disagree about what exists.
 
 **No route accepts a user identifier.** Conversations and messages are addressed by their own id
-and scoped to the caller by the query. Another user's conversation returns **404, not 403** �
+and scoped to the caller by the query. Another user's conversation returns **404, not 403** �
 a 403 confirms it exists, which is a reliable oracle for discovering real ids.
 
 | Method | Path | Purpose |
@@ -652,7 +652,7 @@ a 403 confirms it exists, which is a reliable oracle for discovering real ids.
 
 All require a bearer token.
 
-#### Administrative � requires `ADMIN`, metadata only
+#### Administrative � requires `ADMIN`, metadata only
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -667,7 +667,7 @@ message count and status. It cannot read messages and cannot export a conversati
 That is a decision, not a gap. Message content is private data, and a role that can read every
 conversation without limit is a surveillance capability no dashboard justifies. Where an operator
 genuinely must read content, that needs a separate audited, time-boxed support-access feature
-with a recorded reason � not this route.
+with a recorded reason � not this route.
 
 #### Message shape
 
@@ -697,7 +697,7 @@ reply, and no evidence anything happened.
 
 **Sending currently produces a `PENDING` placeholder and it stays `PENDING`.** Generation is not
 wired in Phase 3. That is not an error: nothing failed, nothing was attempted. It is also not
-fabricated content, and it is not `FAILED` � a failed badge on every reply would be a lie.
+fabricated content, and it is not `FAILED` � a failed badge on every reply would be a lie.
 
 #### History is append-only
 
@@ -706,10 +706,10 @@ same in reverse. Nothing is overwritten in place. Superseded rows remain in the 
 excluded from the default history read.
 
 The intuitive implementation mutates the row, which destroys the only record of what was
-originally said � and since showing alternatives is the entire point of edit and regenerate, an
+originally said � and since showing alternatives is the entire point of edit and regenerate, an
 implementation that deletes the previous attempt cannot implement them correctly.
 
-### 7.2 Streaming contract (Phase 5 � not implemented)
+### 7.2 Streaming contract (Phase 5 � not implemented)
 
 > **Not implemented.** Chat Service currently answers `POST /messages` with JSON, not
 > `text/event-stream`. The shape below is the contract the SSE relay will implement in Phase 5,
@@ -807,80 +807,209 @@ show something useful rather than a bare error.
 
 ## 8. AI Service
 
-Port 8084. **Stateless.** Owns no database.
+Port 8084. **Stateless. Owns no database** (CI rule R5).
 
 ### 8.1 Internal endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/internal/v1/ai/completions` | Non-streaming completion |
-| POST | `/internal/v1/ai/stream` | Streaming completion |
-| GET | `/internal/v1/ai/models` | Available models for a given provider |
-| GET | `/internal/v1/ai/health` | Per-provider reachability |
+| POST | `/internal/v1/ai/generate` | Non-streaming completion |
+| POST | `/internal/v1/ai/generate/stream` | Streaming completion (SSE) |
+| GET | `/internal/v1/ai/models` | Every model, with availability and a reason when unavailable |
+| GET | `/internal/v1/ai/default-model` | The model used when a request names none |
+| GET | `/internal/v1/ai/health` | Per-provider success/failure counts and current health |
+| GET | `/internal/v1/ai/usage` | Recent usage and totals, in memory |
 
-There is **no public route** to this service. The catalogue the frontend renders is proxied
-through the gateway from `/api/v1/models/**`, so the browser still has exactly one entry point.
+**There is no public route to this service, and no gateway route either.** The only provider
+credentials in the platform live behind it, so publishing it would put those one hop from the
+internet. The browser reaches generation solely through Chat Service, which relays the stream
+unchanged (§8.9).
 
-### 8.2 Completion request
+`springdoc` is served (`/v3/api-docs`, `/swagger-ui.html`) and requires a valid token like every
+other route — the document names internal routes, which is worth protecting.
+
+### 8.2 Generate request
 
 ```json
 {
-  "provider": "OPENAI",
-  "model": "gpt-4o-mini",
-  "systemPrompt": "...",
-  "messages": [
-    { "role": "SYSTEM", "content": "..." },
-    { "role": "USER", "content": "..." },
-    { "role": "ASSISTANT", "content": "..." },
-    { "role": "USER", "content": "..." }
-  ],
+  "model": "nexa-default",
+  "message": "Explain the CAP theorem in two paragraphs.",
+  "conversationId": "0f9c1e2a-4b7d-4f1e-9a3c-2d5e6f708192",
   "temperature": 0.7,
-  "maxOutputTokens": 2048,
-  "requestId": "0f9c1e2a-4b7d-4f1e-9a3c-2d5e6f708192"
+  "maxOutputTokens": 1024
 }
 ```
 
-`maxOutputTokens` is **required**. A missing bound is an unbounded bill.
+| Field | Required | Notes |
+|---|:--:|---|
+| `message` | yes | 1–320,000 characters. Blank is a 400 |
+| `model` | no | Absent means the configured default, named explicitly so behaviour does not change when the catalogue is reordered |
+| `conversationId` | no | Correlation only. Never forwarded to a provider |
+| `temperature` | no | 0–2. **Refused with 400 for a model that does not support it** |
+| `maxOutputTokens` | no | Clamped to the model's limit and a platform ceiling the caller cannot raise |
 
-### 8.3 Response
+Two deliberate omissions:
+
+- **No `systemPrompt`.** A caller who could set the system instruction would be instructing the
+  model directly, which is prompt injection with an HTTP parameter. System instructions come from
+  AI Service, if at all.
+- **No `messages` array.** One user turn. Conversation history belongs to Chat Service, which owns
+  it; a second copy here would be a second thing to keep in sync and a second place to leak message
+  content.
+
+`maxOutputTokens` is not required, but it is **always** bounded: an absent value resolves to the
+configured default, which is itself clamped. A missing bound must not mean an unbounded bill.
+
+### 8.3 Generate response
 
 ```json
 {
   "requestId": "0f9c1e2a-4b7d-4f1e-9a3c-2d5e6f708192",
-  "provider": "OPENAI",
-  "model": "gpt-4o-mini",
   "content": "...",
-  "finishReason": "STOP",
-  "usage": { "promptTokens": 812, "completionTokens": 47, "totalTokens": 859 },
-  "latencyMs": 1423
+  "model": "nexa-default",
+  "provider": "OPENAI",
+  "inputTokens": 812,
+  "outputTokens": 47,
+  "fallbackUsed": false,
+  "streamed": false,
+  "durationMillis": 1423,
+  "completedAt": "2026-10-06T19:41:22.104Z"
 }
 ```
 
-### 8.4 Provider errors
+`model` is the model that **actually answered**, which may not be the one requested. `fallbackUsed`
+says so explicitly rather than leaving the caller to infer it by comparing.
 
-Classified, never passed through raw:
+`inputTokens` / `outputTokens` are `null` when the provider reported no usage. **Never zero.** Zero
+would assert that the provider reported none; null says it reported nothing, which is a different
+and honest statement.
 
-| Code | HTTP | Retryable | Cause |
-|---|:--:|:--:|---|
-| `AI_NOT_CONFIGURED` | 503 | no | Missing key. Fails fast at startup, so this is rare |
-| `AI_RATE_LIMITED` | 429 | yes, with backoff | Provider throttling |
-| `AI_TIMEOUT` | 504 | yes, once | Provider exceeded the deadline |
-| `AI_CONTENT_FILTERED` | 422 | no | Provider refused the content |
-| `AI_PROVIDER_ERROR` | 502 | yes | Anything else from the provider |
-| `AI_CIRCUIT_OPEN` | 503 | yes, later | Breaker open after repeated failures |
-| `AI_MODEL_NOT_FOUND` | 404 | no | Unknown model for that provider |
+### 8.4 Stream contract
 
-### 8.5 Produces
+`POST /internal/v1/ai/generate/stream` → `text/event-stream`. Frame shape: an `event:` line and a
+`data:` line together, terminated by a blank line.
 
-| Topic | Payload |
+| Order | Event | `data` |
+|:--:|---|---|
+| 1 | `meta` | `{"requestId":"…","model":"…","provider":"…"}` |
+| 2..n | `token` | `{"text":"…"}` — one per chunk, emitted as produced |
+| last | `done` | `{"requestId":"…","status":"COMPLETE","durationMillis":…}` |
+| — | `error` | `{"code":"…","message":"…","retryable":true\|false}` — replaces everything after `meta` |
+
+Rules, all of which a client depends on:
+
+- **Chunks are separate events.** A single event carrying the whole answer renders identically to no
+  stream at all.
+- **The stream always terminates** with `done` or `error`. A stream that simply closes leaves the
+  client unable to distinguish a finished generation from a dropped connection, so it waits forever.
+  A truncated stream is reported as `error` with code `STREAM_TRUNCATED`, never as success.
+- **`error.retryable` is authoritative.** It is false for a request the provider refused and true for
+  a transient fault. The frontend offers Retry only when it is true.
+- **`meta` arrives first**, so a client can show which model is answering before any content does.
+- Availability is checked **before the stream opens**. A stream that opens and then fails leaves the
+  client holding a connection to nothing, and makes "no provider configured" look like a network
+  error.
+
+Token text is JSON-escaped by AI Service, including control characters. They are escaped rather than
+dropped, because dropping them would silently corrupt the answer the user is reading.
+
+### 8.5 Model availability
+
+`GET /internal/v1/ai/models` returns **every configured model, available or not**:
+
+```json
+[
+  { "name": "nexa-default", "provider": "OPENAI", "priority": 1,
+    "supportsTemperature": true, "maxInputTokens": 128000, "maxOutputTokens": 4096,
+    "available": true, "unavailableReason": null, "allowFallback": true },
+  { "name": "nexa-gemini-flash", "provider": "GEMINI", "priority": 1,
+    "supportsTemperature": true, "maxInputTokens": 1000000, "maxOutputTokens": 8192,
+    "available": false,
+    "unavailableReason": "Provider Google Gemini has no credential configured.",
+    "allowFallback": true }
+]
+```
+
+Listing only what works would hide a misconfigured deployment from the person trying to fix it.
+`unavailableReason` is the actionable part: "unavailable" alone tells an operator nothing, and this
+tells them exactly which line to change. **A reason never contains a credential.**
+
+### 8.6 Routing, fallback and retry
+
+- **Selection.** A named model, else the configured default. An unknown name is a **400** that lists
+  the real names — never a silent substitution of the default, which would answer a question about
+  model A with model B and give the caller no way to know.
+- **Fallback** is *within* the same provider by default, ordered by `priority`. A request for Gemini
+  answered by Llama is a different product, not a graceful degradation, so crossing providers
+  requires a per-model `allowCrossProviderFallback` opt-in.
+- **The honest limit of same-provider fallback:** it cannot survive a provider *outage*, because when
+  a provider is down every model behind it is down too. It covers the case where one model is
+  rate-limited, overloaded or decommissioned while its siblings work.
+- **Retry** repeats the *same* request, only for retryable failures, at most `maxAttempts` (default 3)
+  with exponential backoff from 250 ms capped at 2 s. A retry policy that keeps a request alive for
+  thirty seconds turns a provider outage into a slow failure for every caller at once.
+- **Failure classification decides both.** Retry asks "would the same request work again?"; fallback
+  asks "would a different model do better?" A rejected request answers no to both — retrying it is how
+  one bad prompt becomes three provider calls and a slower failure.
+- **Health.** A provider is marked unhealthy after 3 consecutive *retryable* failures and recovers
+  after 30 s. Only retryable failures count: a provider answering "400 bad request" is a provider
+  that is up, and treating that as an outage takes a working provider out of rotation.
+
+### 8.7 Error mapping
+
+| Failure kind | HTTP | `code` | Retryable upstream |
+|---|:--:|---|:--:|
+| `REJECTED` | 400 | `PROVIDER_REJECTED` | no |
+| `LIMIT_EXCEEDED` | 400 | `PROVIDER_LIMIT_EXCEEDED` | no |
+| `UNAUTHORISED` | 502 | `PROVIDER_UNAUTHORISED` | no |
+| `UNKNOWN` | 502 | `PROVIDER_UNKNOWN` | no |
+| `THROTTLED` | 503 | `PROVIDER_THROTTLED` | yes |
+| `UNAVAILABLE` | 503 | `PROVIDER_UNAVAILABLE` | yes |
+| `NOT_CONFIGURED` | 503 | `PROVIDER_NOT_CONFIGURED` | yes, later |
+
+Plus `UNKNOWN_MODEL` (400, lists the real names) and `NO_PROVIDER_AVAILABLE` (503, carries the
+per-candidate reasons).
+
+The split that matters: a refusal the provider attributes to the **request** is a 400, and one it
+attributes to **our credential or wiring** is a 502. Collapsing them would tell a caller to fix a
+prompt that is fine. **No provider's own message is ever returned** — it may name an upstream URL or
+an account. Fixed text per kind is returned; the provider's message goes to the log.
+
+### 8.8 Produces
+
+None. AI Service publishes no Kafka topic in this phase.
+
+Usage is recorded **in memory only** and exposed at `/internal/v1/ai/usage`, precisely because the
+service owns no database. `UsageSink` is an interface so a later phase replaces the bean with one
+that persists and nothing above it changes.
+
+A usage record carries counts and identifiers and **never prompt or completion text**. A usage
+record is the thing most likely to be logged, exported to a metrics backend and kept for a year;
+carrying a user's words through all of that would turn metering into a data-retention problem nobody
+asked for. It also carries no user identifier — this service holds no user data at all.
+
+### 8.9 Chat Service relay
+
+`POST /api/v1/conversations/{conversationId}/messages` stores a message and creates the assistant
+placeholder. Streaming is a **separate** route, not a flag on that one:
+
+`POST /api/v1/conversations/{conversationId}/messages/stream` → `text/event-stream`
+
+| Property | Value |
 |---|---|
-| `ai.inference.completed.v1` | provider, model, token counts, latency, success flag, **no prompt or completion content** |
+| Ownership | Checked **before** the stream opens. Another user's conversation returns the same 404 as one that does not exist |
+| Event shape | Identical to §8.4. Frames are re-assembled and re-emitted, never re-interpreted — two implementations of one contract can disagree, and a disagreement shows up as a browser rendering the wrong chunk at the wrong time |
+| Upstream error status | Converted to a single `error` event, never a bare HTTP status — the browser has already committed to a stream, so a status it can no longer read is a failure the user sees as a silently stopped stream |
+| Relay read timeout | **None.** A generation may legitimately take minutes; cutting it off leaves a partial answer with no error |
+| Connect timeout | 5 s. An unreachable AI Service should fail fast rather than hold the connection for the full emitter timeout |
+| Emitter timeout | 5 minutes, bounded and configurable. It bounds holding a connection open with nothing to say, not generation |
+| Threading | Virtual thread. `SseEmitter.send` blocks until the browser consumes each frame, so doing this inline would pin a container thread for the whole generation |
 
-This is the metering source ([`PRD.md`](PRD.md) §9). It carries counts, never content.
+**Retry semantics:** retrying a generation re-opens the stream **only**. The question is already
+stored, and re-sending it would put two identical questions in the thread with one answer between
+them.
 
----
-
-## 9. Document Service
+---## 9. Document Service
 
 Port 8085. Owns `nexa_document`. Never embeds ([`ARCHITECTURE.md`](ARCHITECTURE.md) §7.1).
 

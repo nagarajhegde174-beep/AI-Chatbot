@@ -32,9 +32,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String ACCESS_COOKIE = "nexa_access_token";
 
     private final JwtVerifier verifier;
+    private final CallTokenHolder callToken;
 
-    public JwtAuthenticationFilter(JwtVerifier verifier) {
+    public JwtAuthenticationFilter(JwtVerifier verifier, CallTokenHolder callToken) {
         this.verifier = verifier;
+        this.callToken = callToken;
     }
 
     @Override
@@ -51,6 +53,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         verifier.isAdmin(claims),
                         rolesOf(claims));
                 SecurityContextHolder.getContext().setAuthentication(caller);
+                // Held only for this request, only so the outbound AI Service client can relay
+                // it. Never on the Authentication, which travels far more widely.
+                callToken.set(token);
             } catch (JwtException | IllegalArgumentException e) {
                 // The reason goes to DEBUG by type only. The token never does: it is a bearer
                 // credential, and a truncated token is still a credential.
@@ -59,7 +64,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
-        chain.doFilter(request, response);
+        try {
+            chain.doFilter(request, response);
+        } finally {
+            // Cleared in a finally, not on the success path: an exception mid-request would
+            // otherwise leave a token attached to a pooled thread for the next request on it.
+            // Tomcat reuses threads, so "attached to the thread" and "attached to the next
+            // user's request" are the same thing.
+            callToken.clear();
+            SecurityContextHolder.clearContext();
+        }
     }
 
     private List<String> rolesOf(Claims claims) {
