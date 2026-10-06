@@ -37,41 +37,22 @@ export default defineConfig(({ mode }) => {
       // needless information disclosure in a deployed bundle.
       sourcemap: mode !== 'production',
 
-      // Rendering a model answer pulls in react-markdown, KaTeX and
-      // highlight.js, which together are several times the size of the
-      // application itself. Bundled into one file they push the main chunk past
-      // the warning threshold and — the part that actually matters — they
-      // invalidate the entire application chunk whenever a markdown or
-      // highlighting dependency is upgraded.
+      // Emitted so the bundle budget check can tell which chunks the browser
+      // downloads on first paint, as opposed to every chunk that exists. Without
+      // it the check could only sum the whole `dist`, which penalises exactly
+      // the code-splitting the budget is meant to encourage.
+      manifest: true,
+
+      // Grouping is left to the bundler rather than written out by hand here.
       //
-      // Split into named chunks, the app chunk stays small and each of these is
-      // cached independently. This is a cache- and threshold-driven split, not a
-      // claim that the total got smaller: the bytes are all still downloaded for
-      // a page containing a code block.
-      rolldownOptions: {
-        output: {
-          advancedChunks: {
-            groups: [
-              {
-                name: 'math',
-                test: /node_modules[\\/](katex|rehype-katex)/,
-              },
-              {
-                name: 'highlight',
-                test: /node_modules[\\/]highlight\.js/,
-              },
-              {
-                name: 'markdown',
-                test: /node_modules[\\/](react-markdown|remark-|rehype-|unified|micromark|mdast|hast|unist-|vfile|parse5|property-information|space-separated-tokens|comma-separated-tokens|zwitch|html-url-attributes|trim-lines|devlop|ccount|escape-string-regexp|markdown-table|bail|trough|longest-streak)/,
-              },
-              {
-                name: 'react',
-                test: /node_modules[\\/](react|react-dom|scheduler|react-router)/,
-              },
-            ],
-          },
-        },
-      },
+      // Hand-written group patterns are a trap: the first version of this file grouped
+      // everything matching /remark-|rehype-/ into a "math" chunk, which quietly swallowed
+      // `remark-gfm` — a STATIC dependency of the plain Markdown renderer. The plain chunk then
+      // imported the maths chunk, and the maths code was back on the critical path despite being
+      // dynamically imported. The manifests made that visible; the sizes alone would not have.
+      //
+      // The real split comes from `React.lazy` and `import()` in the source, which is where it
+      // belongs: a chunk boundary that a dependency rename can silently break is not a boundary.
     },
   }
 })

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "lint": "oxlint",
     "typecheck": "tsc -b",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "validate:yaml": "node scripts/validate-yaml.mjs"
   },
   "dependencies": {

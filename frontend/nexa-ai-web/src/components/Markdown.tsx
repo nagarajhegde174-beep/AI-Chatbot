@@ -4,9 +4,8 @@
  * ## Why a real renderer and not pre-formatted text
  *
  * Models emit Markdown, and prose that arrives as a wall of unrendered `**bold**` and fenced
- * backticks is unreadable. Rendering it properly also means the common structures — code,
- * tables, maths — get the treatment they were written for instead of being approximated with
- * whitespace.
+ * backticks is unreadable. Rendering it properly also means the common structures — code, tables,
+ * maths — get the treatment they were written for instead of being approximated with whitespace.
  *
  * ## Why rendering is disabled while tokens are arriving
  *
@@ -14,6 +13,20 @@
  * half-written `$…$` makes the parser do the wrong thing *and* throws away the reader's scroll
  * position and text selection. So during a stream the raw text is shown; on `done` it is rendered
  * once. The transition is jarring enough to be worth it, and the alternative is worse.
+ *
+ * ## Why maths is loaded on demand
+ *
+ * KaTeX, `rehype-katex` and `remark-math` together are the heaviest dependencies in the
+ * application, and the majority of answers contain no formula at all. Shipping them in the initial
+ * payload makes every user pay for every message's worst case.
+ *
+ * So {@link MarkdownMath} is a `React.lazy` chunk, fetched only when the text actually contains a
+ * maths delimiter. Until it arrives the message renders through the ordinary path, which is
+ * complete except for maths — so a reader gets a fully formatted message a moment before the
+ * maths appears, rather than a spinner.
+ *
+ * The same reasoning applies to syntax highlighting, which is `import()`-ed inside
+ * {@link MarkdownCode} on first use. See `markdownRenderers.tsx`.
  *
  * ## Untrusted input
  *
@@ -23,151 +36,54 @@
  * That default is the reason this component does not reach for `rehype-raw`.
  */
 
-import { useCallback, useMemo, useState } from 'react'
+import { Suspense, lazy } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import { Check, Copy } from 'lucide-react'
-import hljs from 'highlight.js/lib/common'
+
+import { MarkdownCode, MarkdownTable } from './markdownRenderers'
 
 /**
- * A narrow highlight.js bundle.
+ * The maths-capable renderer.
  *
- * `highlight.js/lib/common` rather than the full library: the full build is roughly ten times the
- * size and carries every language a chat assistant will never emit. `common` covers the languages
- * that appear in practice, and an unrecognised language degrades to plain text rather than
- * failing.
+ * `React.lazy` rather than a dynamic `rehypePlugins` entry: unified does not await plugins, so a
+ * promised plugin is silently ignored and maths renders as literal `$x$` with nothing logged.
+ * A separate component is the only version of this that actually works.
  */
-const HIGHLIGHT_LANGUAGES = 'javascript typescript python java go rust c cpp csharp php ruby swift kotlin sql bash json yaml xml html css markdown'
+const MarkdownMath = lazy(() => import('./MarkdownMath'))
 
 /**
- * Highlights source for display.
+ * Detects a maths delimiter.
  *
- * <p>Never throws. `highlight.js` throws on a grammar it cannot parse, and a code block that
- * fails to highlight is still perfectly readable — it just needs to fall back to plain text rather
- * than take the whole message down with it.
+ * <p>Deliberately a cheap scan rather than a parse. `remark-math` is most of what the maths
+ * feature costs, so deciding whether to load it cannot itself require it. A false positive loads
+ * KaTeX for a message with no maths in it — cheap and harmless. A false negative would render
+ * `$x$` as literal text, which is not.
+ *
+ * <p>The escaped forms matter: a model answering a question about the dollar sign writes `\$`,
+ * and treating that as maths produces visibly broken output.
  */
-function highlight(code: string, language: string | undefined): { html: string; language: string } {
-  const resolved =
-    language && hljs.getLanguage(language) ? language : hljs.getLanguage('plaintext') ? 'plaintext' : ''
-  try {
-    const result = resolved ? hljs.highlight(code, { language: resolved }) : null
-    return {
-      html: result?.value ?? escapeHtml(code),
-      language: resolved || 'text',
-    }
-  } catch {
-    return { html: escapeHtml(code), language: resolved || 'text' }
-  }
+const MATH_PATTERN =
+  /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|(^|[^\\$])\$(?!\s*$)[^$\n]+\$)/m
+
+/**
+ * Whether this message needs the maths renderer at all.
+ *
+ * <p>Not exported. Nothing outside this module needs it, and a component file that also exports a
+ * plain function loses fast refresh for the whole file.
+ */
+function containsMath(content: string): boolean {
+  return MATH_PATTERN.test(content)
 }
 
-/**
- * Escapes text for `dangerouslySetInnerHTML`.
- *
- * <p>Only ever applied to code that highlight.js declined to highlight, so the output is escaped
- * precisely once — by this — rather than relying on every caller having done it.
- */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
+const components = { code: MarkdownCode, table: MarkdownTable }
 
-/** A copy button that reports success for long enough to be noticed. */
-function CopyButton({ text }: { readonly text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const copy = useCallback(() => {
-    void navigator.clipboard.writeText(text).then(
-      () => {
-        setCopied(true)
-        // Cleared on a timer rather than on the next render: an effect keyed on `copied` would
-        // reset it the instant it was set.
-        window.setTimeout(() => setCopied(false), 1500)
-      },
-      () => {
-        // Clipboard access can be denied by permissions policy. Failing silently here would look
-        // like a broken button; the label simply does not change.
-      },
-    )
-  }, [text])
-
+/** The ordinary renderer: Markdown, GFM tables, code blocks. No maths. */
+function Plain({ content }: { readonly content: string }) {
   return (
-    <button
-      type="button"
-      className={`code-copy${copied ? ' is-copied' : ''}`}
-      onClick={copy}
-      aria-label={copied ? 'Copied' : 'Copy code'}
-      title={copied ? 'Copied' : 'Copy code'}
-    >
-      {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
-      <span>{copied ? 'Copied' : 'Copy'}</span>
-    </button>
-  )
-}
-
-/** A fenced code block, with a language label, highlighting and a copy button. */
-function CodeBlock({
-  code,
-  language,
-}: {
-  readonly code: string
-  readonly language?: string
-}) {
-  const { html, language: resolved } = useMemo(
-    () => highlight(code, language),
-    [code, language],
-  )
-
-  return (
-    <div className="code-block">
-      <div className="code-block__bar">
-        <span className="code-block__lang">{resolved}</span>
-        <CopyButton text={code} />
-      </div>
-      <pre className="code-block__pre">
-        <code
-          className={`hljs language-${resolved}`}
-          // Safe because `escapeHtml` runs on exactly the paths that did not come from
-          // highlight.js, and highlight.js escapes its own output.
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      </pre>
-    </div>
-  )
-}
-
-/**
- * The component code fences and inline code.
- *
- * <p>Inline code and a fenced block share a ReactMarkdown slot, distinguished by whether the
- * parent is a paragraph. Returning the right element from one function keeps them visually
- * consistent instead of letting the two drift apart.
- */
-function code({ className, children, ...props }: React.ComponentProps<'code'>) {
-  const text = String(children ?? '').replace(/\n$/, '')
-  const language = /language-(\w+)/.exec(className ?? '')?.[1]
-
-  if (!text.includes('\n')) {
-    return (
-      <code className="inline-code" {...props}>
-        {children}
-      </code>
-    )
-  }
-
-  return <CodeBlock code={text} language={language} />
-}
-
-/** Tables get a wrapper so they can scroll instead of overflowing the message column. */
-function table({ children, ...props }: React.ComponentProps<'table'>) {
-  return (
-    <div className="table-scroll">
-      <table {...props}>{children}</table>
+    <div className="markdown">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </ReactMarkdown>
     </div>
   )
 }
@@ -191,17 +107,15 @@ export function Markdown({ content, streaming = false }: MarkdownProps) {
     )
   }
 
-  return (
-    <div className="markdown">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={{ code, table }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
-  )
-}
+  if (containsMath(content)) {
+    // The fallback is the ordinary renderer rather than a spinner: it renders everything except
+    // the maths, so the message is complete and readable a moment before the maths appears.
+    return (
+      <Suspense fallback={<Plain content={content} />}>
+        <MarkdownMath content={content} />
+      </Suspense>
+    )
+  }
 
-export { HIGHLIGHT_LANGUAGES }
+  return <Plain content={content} />
+}

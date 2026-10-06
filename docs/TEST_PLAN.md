@@ -268,8 +268,10 @@ Statelessness and configuration:
 - [x] No credential in `dist/`
 - [x] **No provider endpoint is reachable from the browser** — the only credential it can send is a
       cookie, and AI Service has no gateway route
-- [x] Bundle split so the app chunk stays at its 110 kB baseline; markdown, maths, highlighting and
-      React are separate cacheable chunks
+- [x] **KaTeX and highlight.js loaded on demand.** ~132 kB gzipped that most users never need
+- [x] **Initial JavaScript 156.7 kB gzipped**, within the 200 kB budget; total 288.5 kB within the
+      320 kB ceiling. The previous check summed every chunk against the *initial* budget, so it
+      could only be satisfied by deleting the feature -- see ARCHITECTURE.md 9.2a
 - [ ] **Component tests and E2E** — still not built. There is no frontend test runner, so the
       streaming parser and the Markdown renderer are verified by inspection and by type-checking
       only. This is the same gap recorded in Phase 3 and it is now larger.
@@ -519,8 +521,11 @@ wrongly*, or a stream that looked fine and delivered nothing.
 | A `pom.xml` comment mentioned `datasource` and `Flyway` on continuation lines | CI rule R5 strips only comment lines **starting** with a marker, so a wrapped XML comment **fails its own rule** and would have broken every build |
 | The test `application.yml` shadowed the production one | Spring Boot loads **one resource per location and never merges them**. The tests exercised a configuration that **ships to nobody**, and every regression in the real file would have passed CI |
 | `ProviderHealth` is a process-wide singleton | Test pollution, but the real finding is that **state leaks between unrelated tests** and the resulting failures look like routing bugs rather than test pollution |
+| The bundle check summed **every** chunk in `dist` and compared it to the **initial** 200 kB budget | It measured a different quantity than the budget describes, and made code-splitting **strictly worse**: deferring code changed nothing for the check while genuinely improving what a user downloads. The only way to satisfy it was to delete the feature |
+| A hand-written `advancedChunks` group matched `/remark-\|rehype-/` into the "math" chunk | It swallowed `remark-gfm`, a **static** dependency of the plain renderer, so the maths chunk was back on the critical path despite being dynamically imported. The 88 kB the lazy load was supposed to remove was still being downloaded |
+| The budget script traversed the manifest by output path instead of manifest key | Vite keys chunks by name (`_math-abc.js`) and emits them at a path (`assets/math-abc.js`). Resolving on the wrong one finds nothing, reports a **near-zero payload, and passes** |
 
-**Five lessons worth carrying forward.**
+**Seven lessons worth carrying forward.**
 
 1. **`matchIfMissing = true` reads backwards.** It does not mean "enable when the operator has not
    chosen"; on a provider selector it means *absent configuration activates everything*. Every
@@ -536,6 +541,14 @@ wrongly*, or a stream that looked fine and delivered nothing.
    "configured" is what catches it.
 5. **A test configuration file that replaces production configuration is worse than no test.** It
    reports green while testing something that does not ship. Overlay a profile; never shadow.
+6. **A check that measures a different quantity than its budget describes is worse than no check.**
+   The bundle check summed every chunk and compared it to an *initial-load* budget, so the only way
+   to make it pass was to remove the feature it was protecting. When a check fails, read what it
+   measures before deciding whether the code or the number is wrong.
+7. **A budget check that cannot fail is not a check.** Two of the defects above produce a *passing*
+   check. The replacement script was verified to fail when each cap is lowered below the measured
+   value, and to fail loudly when its input is missing -- because the previous generation of this bug
+   was a measurement that silently reported zero.
 
 ### 7.2d The one that testing did not catch, and should have
 

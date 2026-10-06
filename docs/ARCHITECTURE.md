@@ -386,11 +386,51 @@ frontend/nexa-ai-web/src/
   no API keys and cannot have any.
 - **Tokens are held in memory** with refresh on load. `localStorage` is acceptable only if
   documented, and never for anything else.
-- **Server-Sent Events** are consumed with `EventSource`, not a WebSocket, because the transport
-  is server→client only.
+- **Server-Sent Events** are consumed with `fetch` and a `ReadableStream`, **not** with
+  `EventSource`. `EventSource` is GET-only, and sending a chat message is a POST with a body.
+  Every workaround for that — base64 the prompt into a query string, or open a second GET once the
+  POST has created the message — puts a credential or a prompt somewhere that is easy to log by
+  accident. It is still not a WebSocket: the transport is one-directional, and the response body is
+  a `text/event-stream` parsed frame by frame.
+  Two consequences worth knowing: `fetch` needs an `AbortController` for **stop**, and the frame
+  parser must handle frames split across network chunks, because packet boundaries and SSE frame
+  boundaries do not agree.
+- **Heavy, optional rendering is loaded on demand.** KaTeX (maths) and highlight.js (syntax
+  highlighting) together are ~132 kB gzipped, more than everything else in the application, and the
+  majority of answers contain neither a formula nor a code block. Both are separate chunks fetched
+  the first time a message actually needs them. The chunk boundary lives in `React.lazy` and
+  `import()` calls in the source — **not** in bundler group patterns, because a dependency rename
+  silently breaks a pattern-based boundary and nothing fails.
 - **Accessibility is part of the definition of done**: semantic elements, visible focus, labelled
-  controls, contrast that passes AA.
+  controls, contrast that passes AA. `prefers-reduced-motion` is honoured for the streaming
+  indicator.
 
+### 9.2a The bundle budget
+
+Two caps, **both enforced** by `frontend/nexa-ai-web/scripts/check-bundle-budget.mjs`:
+
+| Cap | Limit | What it measures |
+|---|:--:|---|
+| **Initial** | 200 kB gzip | The static import closure of the HTML entry point — what a browser downloads before the page is usable |
+| **Total** | 320 kB gzip | Every JavaScript chunk, including ones fetched only on demand |
+
+Both are needed. An initial-only cap lets the codebase grow without limit; a total-only cap punishes
+deferring a heavy dependency most users never need, which is the opposite of what a budget is for.
+The total is a **ceiling, not a target**, and it is lowered whenever the total falls.
+
+The check reads Vite's build manifest (`build.manifest: true`) and traverses `imports`, never
+`dynamicImports`. Traversal is by manifest **key**, not by output path — the two differ, and
+resolving on the wrong one reports a near-zero payload and passes.
+
+**Why this replaced a simpler check.** The previous version summed every `.js` file in `dist` and
+compared that to the 200 kB *initial* budget. It measured a different quantity than the budget
+describes, and it made code-splitting strictly worse: moving code into a chunk changed nothing for
+the check while genuinely improving the number a user experiences. A check that penalises the
+technique it exists to encourage gets satisfied by deleting the feature.
+
+The replacement is **two** checks rather than one, and both have been verified to fail when their
+cap is lowered below the measured value, and to fail loudly when the manifest is missing rather than
+reporting zero. A budget check that cannot fail is not a check.
 ### 9.3 Theme
 
 Bootstrap's `data-bs-theme` attribute on `<html>` drives light, dark and system. The token layer
