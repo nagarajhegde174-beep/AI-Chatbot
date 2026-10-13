@@ -6,6 +6,7 @@ import com.nexaai.chat.domain.ChatConversation;
 import com.nexaai.chat.domain.ChatMessage;
 import com.nexaai.chat.domain.MessageFeedback;
 import com.nexaai.chat.domain.MessageRole;
+import com.nexaai.chat.domain.MessageStatus;
 import com.nexaai.chat.repository.ChatMessageRepository;
 import com.nexaai.chat.repository.MessageFeedbackRepository;
 import com.nexaai.chat.web.dto.MessageResponse;
@@ -276,6 +277,49 @@ public class MessageService {
      * deliberately not marked FAILED: nothing failed, nothing was attempted, and a FAILED badge on
      * every reply in this phase would be a lie.
      */
+    /**
+     * Completes a PENDING assistant message with text produced by a stream.
+     *
+     * <p>Separate from the internal generation path because a streamed reply arrives over the
+     * network rather than from a direct call, and it can arrive in three shapes: completed,
+     * stopped by the user, or cut off by a failure. All three produced text the user actually saw,
+     * so all three are persisted rather than treated as a failed request.
+     *
+     * <p>Ownership is checked. Persisting by message id alone would let a caller write text into
+     * any assistant message, including another user's.
+     */
+    @Transactional
+    public void completeGeneration(UUID ownerAuthUserId, UUID messageId, String content,
+                                   String model) {
+        ChatMessage message = messages.findByIdAndOwnerAuthUserId(messageId, ownerAuthUserId)
+                .orElseThrow(() -> new com.nexaai.chat.exception.ChatResourceNotFoundException(
+                        com.nexaai.chat.exception.ChatResourceNotFoundException.Kind.MESSAGE,
+                        messageId));
+
+        if (message.getStatus() != MessageStatus.PENDING) {
+            // Already terminal. A stop and a timeout can both fire for one generation, and the
+            // first outcome to land is the truth.
+            return;
+        }
+        message.completeWith(content, model, null, null);
+        messages.save(message);
+    }
+
+    /**
+     * Marks a PENDING assistant message as failed, when a stream produced no usable text.
+     *
+     * <p>Distinct from clearing it away. An empty answer with no explanation is worse than a
+     * visible failure, because it looks like the model chose to say nothing.
+     */
+    @Transactional
+    public void markGenerationFailed(UUID ownerAuthUserId, UUID messageId, String reason) {
+        messages.findByIdAndOwnerAuthUserId(messageId, ownerAuthUserId)
+                .ifPresent(message -> {
+                    message.fail(reason);
+                    messages.save(message);
+                });
+    }
+
     private void attemptGeneration(ChatConversation conversation, ChatMessage userMessage,
                                    ChatMessage placeholder, String model) {
         if (!generation.isAvailable()) {

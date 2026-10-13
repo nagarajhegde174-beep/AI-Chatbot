@@ -29,6 +29,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Square } from 'lucide-react'
 
 import * as chatApi from '../api/chat'
+import * as memoryApi from '../api/memoryApi'
+import type { MemoryStatus } from '../api/memory'
 import type { Conversation, FeedbackRating, Message } from '../api/chat'
 import { toApiError } from '../api/client'
 import { streamReply, type StreamResult } from '../api/stream'
@@ -36,6 +38,7 @@ import { AppShell } from '../components/AppShell'
 import { Composer } from '../components/Composer'
 import { ConversationList, type ConversationFilter } from '../components/ConversationList'
 import { Markdown } from '../components/Markdown'
+import { MemoryStrip } from '../components/MemoryStrip'
 import { MessageThread } from '../components/MessageThread'
 import { EmptyState, ErrorState, LoadingState, MessageSkeleton } from '../components/States'
 
@@ -67,6 +70,14 @@ export function ChatPage(): React.JSX.Element {
   const [editing, setEditing] = useState<{ readonly id: string; readonly content: string } | null>(null)
 
   const [streaming, setStreaming] = useState<StreamingReply | null>(null)
+
+  /**
+   * What the selected conversation remembers.
+   *
+   * <p>Loaded with the thread rather than on demand: the strip is part of the conversation's
+   * state, and showing it only after a fetch would make it flicker in on every selection.
+   */
+  const [memoryStatus, setMemoryStatus] = useState<MemoryStatus | null>(null)
 
   /**
    * The in-flight stream's abort controller.
@@ -123,6 +134,24 @@ export function ChatPage(): React.JSX.Element {
   // Loading a thread
   // -------------------------------------------------------------------
 
+  /**
+   * Loads memory status for a conversation.
+   *
+   * <p>Declared before `loadMessages` because a dependency array is evaluated during render: a
+   * `useCallback` that referenced a later `const` would throw a temporal-dead-zone ReferenceError
+   * on the first render rather than failing loudly where the mistake is.
+   *
+   * <p>Failures swallowed, deliberately. A memory feature that could take the conversation
+   * offline would be exactly the wrong dependency direction.
+   */
+  const loadMemory = useCallback(async (conversationId: string): Promise<void> => {
+    try {
+      setMemoryStatus(await memoryApi.getMemory(conversationId))
+    } catch {
+      setMemoryStatus(null)
+    }
+  }, [])
+
   const loadMessages = useCallback(async (conversationId: string): Promise<void> => {
     setThreadLoading(true)
     setThreadError(null)
@@ -134,11 +163,13 @@ export function ChatPage(): React.JSX.Element {
     } finally {
       setThreadLoading(false)
     }
-  }, [])
+    void loadMemory(conversationId)
+  }, [loadMemory])
 
   useEffect(() => {
     if (selectedId === null) {
       setMessages([])
+      setMemoryStatus(null)
       return
     }
     void loadMessages(selectedId)
@@ -481,6 +512,14 @@ export function ChatPage(): React.JSX.Element {
               </>
             )}
           </div>
+
+          {selectedId === null ? null : (
+            <MemoryStrip
+              conversationId={selectedId}
+              status={memoryStatus}
+              onChanged={setMemoryStatus}
+            />
+          )}
 
           <Composer
             // Remounts when an edit begins or ends. That is how the textarea is prefilled

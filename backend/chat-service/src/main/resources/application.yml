@@ -114,11 +114,49 @@ nexa:
       max-message-length: ${NEXA_CHAT_MAX_MESSAGE_LENGTH:32000}
       max-title-length: ${NEXA_CHAT_MAX_TITLE_LENGTH:200}
 
+    # Conversation memory.
+    #
+    # ===================================================================
+    #  HISTORY IS NEVER SENT UNBOUNDED. Every generation carries a context
+    #  selected against context-token-budget, and that budget IS the
+    #  guarantee. Raise it and the guarantee holds at the new number.
+    #
+    #  The budget belongs to THIS service, not to AI Service. Which model
+    #  has which context window is AI Service's catalogue to own, and
+    #  duplicating it here would be a second thing to keep in sync and a
+    #  second thing to get wrong. So this is a platform policy, set low
+    #  enough to fit every configured model, and AI Service remains the
+    #  final authority: it refuses anything that does not fit the model it
+    #  actually chose. Each layer catching the other's mistake.
+    # ===================================================================
+    memory:
+      context-token-budget: ${NEXA_CHAT_MEMORY_TOKEN_BUDGET:6000}
+
+      # How many recent turns are ALWAYS sent, whatever the budget says.
+      #
+      # Token-based selection alone, under pressure, drops the turn right
+      # before the question -- which is usually the one that explains what
+      # the question refers to. The result is a confident answer to a
+      # question whose subject the model can no longer see.
+      always-keep-recent-turns: ${NEXA_CHAT_MEMORY_KEEP_RECENT:6}
+
+      # Fraction of the budget above which older turns get compressed.
+      #
+      # Summarisation costs a model call, so it must not run on every
+      # message. Half the budget means it runs when there is real pressure
+      # and not before.
+      summarise-threshold: ${NEXA_CHAT_MEMORY_SUMMARISE_THRESHOLD:0.5}
+
+      # Off is a supported configuration, not a degraded one: context is
+      # still window-managed, using verbatim turns only.
+      summarisation-enabled: ${NEXA_CHAT_MEMORY_SUMMARISE_ENABLED:true}
+      summarise-timeout: ${NEXA_CHAT_MEMORY_SUMMARISE_TIMEOUT:45s}
+
     generation:
-      # OFF in this phase. There is no AI Service yet, so a sent message
-      # leaves a PENDING placeholder. Turning this on without a real port
-      # implementing ChatGenerationPort changes nothing: the port reports
-      # itself unavailable and placeholders stay PENDING.
+      # The BLOCKING port is still disabled. The STREAM route is the
+      # working path end to end: browser -> Chat Service -> AI Service ->
+      # provider. Closing the blocking path needs a service credential
+      # rather than relaying the user's own token (ARCHITECTURE.md 16c).
       enabled: ${NEXA_CHAT_GENERATION_ENABLED:false}
       ai-service-url: ${NEXA_AI_SERVICE_URL:http://localhost:8084}
       timeout: ${NEXA_CHAT_GENERATION_TIMEOUT:60s}

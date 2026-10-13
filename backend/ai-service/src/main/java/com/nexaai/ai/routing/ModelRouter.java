@@ -1,6 +1,7 @@
 package com.nexaai.ai.routing;
 
 import com.nexaai.ai.config.AiProperties;
+import com.nexaai.ai.model.ConversationTurn;
 import com.nexaai.ai.model.ModelCatalog;
 import com.nexaai.ai.model.ModelDescriptor;
 import com.nexaai.ai.provider.ProviderClient;
@@ -137,16 +138,46 @@ public class ModelRouter {
     // ==================================================================
 
     /**
+     * A single-turn completion, with no conversation context.
+     *
+     * <p>A convenience for callers with nothing to remember. It is a genuine shape rather than a
+     * test-only one — the summariser uses it, and so would a first question in a new conversation —
+     * and it routes through exactly the same path as the multi-turn overload, so there is only one
+     * implementation of "answer this".
+     */
+    public RoutedResult complete(String requestId, String requestedModel, String systemMessage,
+                                 String userContent, Double temperature, Integer maxOutputTokens) {
+        return complete(requestId, requestedModel, systemMessage,
+                List.of(new ConversationTurn(ConversationTurn.Kind.USER, userContent)),
+                temperature, maxOutputTokens);
+    }
+
+    /**
      * Runs one turn, falling back across the model's provider chain when it cannot be completed.
+     *
+     * <p><strong>The whole assembled prompt is measured, not just the new message.</strong> A
+     * caller that checked only its own turn would send a 200-turn conversation to a model with a
+     * 4k context and discover the problem as a provider error, having already paid for the
+     * request. Context that does not fit is refused here, before any provider is contacted.
      *
      * @param systemMessage set by this service only, never by the caller
      */
     public RoutedResult complete(String requestId, String requestedModel, String systemMessage,
-                                 String userContent, Double temperature, Integer maxOutputTokens) {
+                                 List<ConversationTurn> turns, Double temperature,
+                                 Integer maxOutputTokens) {
 
         ModelDescriptor primary = select(requestedModel);
+        if (turns == null || turns.isEmpty()) {
+            // Refused rather than sent. An empty prompt produces either a provider error or a
+            // confident answer to nothing, and the caller cannot tell which happened from the
+            // response. Reaching here means the caller forgot to append the turn being answered,
+            // which is a bug worth surfacing rather than papering over with a placeholder.
+            throw new IllegalArgumentException(
+                    "A generation request must contain at least the turn being answered.");
+        }
+        enforceInputLimit(primary, turns);
         ProviderMessages.GenerationRequest request = new ProviderMessages.GenerationRequest(
-                primary, systemMessage, userContent, validatedTemperature(primary, temperature),
+                primary, systemMessage, turns, validatedTemperature(primary, temperature),
                 effectiveMaxOutputTokens(primary, maxOutputTokens));
 
         Instant started = Instant.now();
@@ -155,6 +186,17 @@ public class ModelRouter {
         for (ModelDescriptor candidate : catalog.fallbackChainFor(primary.name())) {
             ProviderClient client = providersById.get(candidate.provider());
             String reason = resolveAvailability(candidate);
+
+            // Re-checked per candidate: a fallback model may have a smaller context window than
+            // the one the caller sized against, and sending a prompt that fits neither is a
+            // provider-side rejection we could have avoided.
+            try {
+                enforceInputLimit(candidate, turns);
+            } catch (IllegalArgumentException e) {
+                log.info("Skipping model {} for request {}: {}", candidate.name(), requestId,
+                        e.getMessage());
+                continue;
+            }
 
             if (reason != null) {
                 log.info("Skipping model {} for request {}: {}", candidate.name(), requestId,
@@ -217,7 +259,7 @@ public class ModelRouter {
         return new ProviderMessages.GenerationRequest(
                 candidate,
                 request.systemMessage(),
-                request.userContent(),
+                request.turns(),
                 validatedTemperature(candidate, request.temperature()),
                 effectiveMaxOutputTokens(candidate, request.maxOutputTokens()));
     }
@@ -273,17 +315,65 @@ public class ModelRouter {
         return requested;
     }
 
-    /** Rough input-size check against the model's context limit. */
-    public void enforceInputLimit(ModelDescriptor model, String userContent) {
-        // Four characters per token is the usual English approximation. It is deliberately
-        // approximate and deliberately generous: a false rejection here would block a legitimate
-        // request, and the provider enforces the real limit anyway.
-        int estimatedTokens = userContent == null ? 0 : userContent.length() / 4;
-        if (!model.canAcceptInput(estimatedTokens)) {
-            throw new IllegalArgumentException("The message is too long for model " + model.name()
-                    + ": about " + estimatedTokens + " tokens estimated against a limit of "
-                    + model.maxInputTokens() + ".");
+    /** Rough input-size check against the model's context limit, over the whole prompt. */
+    public void enforceInputLimit(ModelDescriptor model, List<ConversationTurn> turns) {
+        int estimated = ConversationTurn.estimatedTokens(turns);
+        if (!model.canAcceptInput(estimated)) {
+            // Names the actual numbers rather than just "too long". A caller that cannot see how
+            // far over it is cannot decide between shortening the question, dropping history, or
+            // picking a larger model — and which of those is right depends on what they meant.
+            throw new IllegalArgumentException(
+                    "The conversation context is too large for model " + model.name() + ": about "
+                            + estimated + " tokens estimated against a limit of "
+                            + model.maxInputTokens() + ". Send less history, or use a model with "
+                            + "a larger context window.");
         }
+    }
+
+    /**
+     * The summarised result of compressing a run of turns.
+     *
+     * <p>Summarisation is a model call, so it goes through {@link #complete} — the same router,
+     * the same retry policy, the same provider classification. A caller that could summarise
+     * without a model would be summarising with string manipulation, which is not summarisation.
+     *
+     * <p><strong>Low temperature by default.</strong> A summary is an act of compression; the
+     * model's creativity is not a virtue here, and a summariser that embellishes invents things
+     * the user did not say. A summary that invents is worse than no summary at all, because the
+     * user cannot tell it apart from their own words.
+     */
+    public RoutedResult summarize(String requestId, String requestedModel,
+                                  List<ConversationTurn> turns, Integer targetTokens,
+                                  Double temperature) {
+        int target = targetTokens == null ? 400 : targetTokens;
+        String instruction = "Summarise the following conversation, preserving the user's goals, "
+                + "decisions, stated facts, and any unresolved questions. Write roughly " + target
+                + " tokens. Do not add information that is not present.\n\n"
+                + renderTranscript(turns);
+
+        return complete(requestId, requestedModel, null,
+                List.of(new ConversationTurn(ConversationTurn.Kind.USER, instruction)),
+                temperature == null ? 0.2 : temperature,
+                target);
+    }
+
+    /** The turns as a role-prefixed transcript, for the summarisation instruction. */
+    private static String renderTranscript(List<ConversationTurn> turns) {
+        StringBuilder out = new StringBuilder();
+        for (ConversationTurn turn : turns) {
+            out.append(turn.kind().name()).append(": ").append(turn.content()).append("\n\n");
+        }
+        return out.toString().trim();
+    }
+
+    /**
+     * How many estimated tokens of room remain for a run of turns.
+     *
+     * <p>Exposed so a caller sizing its window can ask before sending rather than after being
+     * refused. Negative means it does not fit.
+     */
+    public int headroomAfter(ModelDescriptor model, List<ConversationTurn> turns) {
+        return model.maxInputTokens() - ConversationTurn.estimatedTokens(turns);
     }
 
     private String describeUnavailableChain(ModelDescriptor primary) {

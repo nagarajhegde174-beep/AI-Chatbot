@@ -815,6 +815,7 @@ Port 8084. **Stateless. Owns no database** (CI rule R5).
 |---|---|---|
 | POST | `/internal/v1/ai/generate` | Non-streaming completion |
 | POST | `/internal/v1/ai/generate/stream` | Streaming completion (SSE) |
+| POST | `/internal/v1/ai/summarize` | Compress older conversation turns into a summary |
 | GET | `/internal/v1/ai/models` | Every model, with availability and a reason when unavailable |
 | GET | `/internal/v1/ai/default-model` | The model used when a request names none |
 | GET | `/internal/v1/ai/health` | Per-provider success/failure counts and current health |
@@ -834,6 +835,11 @@ other route — the document names internal routes, which is worth protecting.
 {
   "model": "nexa-default",
   "message": "Explain the CAP theorem in two paragraphs.",
+  "messages": [
+    { "role": "SUMMARY", "content": "They discussed deployment and chose Postgres." },
+    { "role": "USER", "content": "why did you pick Postgres?" },
+    { "role": "ASSISTANT", "content": "Operational simplicity and pgvector." }
+  ],
   "conversationId": "0f9c1e2a-4b7d-4f1e-9a3c-2d5e6f708192",
   "temperature": 0.7,
   "maxOutputTokens": 1024
@@ -842,20 +848,35 @@ other route — the document names internal routes, which is worth protecting.
 
 | Field | Required | Notes |
 |---|:--:|---|
-| `message` | yes | 1–320,000 characters. Blank is a 400 |
-| `model` | no | Absent means the configured default, named explicitly so behaviour does not change when the catalogue is reordered |
+| `message` | yes | 1–320,000 characters. Blank is a 400. **Always sent as the LAST turn** |
+| `messages` | no | Prior context, oldest first, at most 200 entries. Excludes `message` |
+| `model` | no | Absent means the configured default |
 | `conversationId` | no | Correlation only. Never forwarded to a provider |
 | `temperature` | no | 0–2. **Refused with 400 for a model that does not support it** |
 | `maxOutputTokens` | no | Clamped to the model's limit and a platform ceiling the caller cannot raise |
 
-Two deliberate omissions:
+**Two fields, not one.** `message` is the turn being answered; `messages` is the context behind it.
+The server appends `message` as the final turn itself, so a caller cannot reorder history, omit
+the question, or send a history whose last turn is an assistant message — all of which produce a
+confident answer to the wrong question.
 
-- **No `systemPrompt`.** A caller who could set the system instruction would be instructing the
-  model directly, which is prompt injection with an HTTP parameter. System instructions come from
-  AI Service, if at all.
-- **No `messages` array.** One user turn. Conversation history belongs to Chat Service, which owns
-  it; a second copy here would be a second thing to keep in sync and a second place to leak message
-  content.
+**Roles are `USER`, `ASSISTANT` and `SUMMARY`. There is deliberately no `SYSTEM` role.** A caller
+must not be able to place a system instruction into a conversation: every turn here is either
+something the user wrote or a compression of something the user wrote.
+
+`SUMMARY` is a first-class role rather than a convention. It is sent **first**, ahead of the
+verbatim turns, and labelled so the model reads it as recollection. Presented as ordinary prose it
+reads as the most recent thing that happened, which is exactly what a compressed conversation is
+prone to.
+
+`maxOutputTokens` is not required, but the **whole prompt** is always bounded: context is measured
+against the model's input limit and a request that does not fit is refused with 400 **before any
+provider is contacted**. A caller that checked only its own turn would send a 200-turn
+conversation to a model with a 4k context and discover the problem as a provider error, having
+already paid for the request.
+
+There is **no `systemPrompt` field**, for the same reason there is no `SYSTEM` role. Instruction
+setting is this service's business.
 
 `maxOutputTokens` is not required, but it is **always** bounded: an absent value resolves to the
 configured default, which is itself clamped. A missing bound must not mean an unbounded bill.
@@ -988,7 +1009,97 @@ record is the thing most likely to be logged, exported to a metrics backend and 
 carrying a user's words through all of that would turn metering into a data-retention problem nobody
 asked for. It also carries no user identifier — this service holds no user data at all.
 
-### 8.9 Chat Service relay
+### 8.9 Summarisation
+
+`POST /internal/v1/ai/summarize`
+
+Compresses a run of older conversation turns so a caller can keep them without sending them
+verbatim. **A model call, not string manipulation** — truncation that looks like a summary silently
+drops whatever was cut, including the question the summary was meant to explain.
+
+**Request**
+
+```json
+{
+  "model": "nexa-default",
+  "targetTokens": 1200,
+  "messages": [
+    { "role": "SUMMARY", "content": "Earlier: they chose Postgres." },
+    { "role": "USER", "content": "why?" },
+    { "role": "ASSISTANT", "content": "Operational simplicity." }
+  ]
+}
+```
+
+| Field | Required | Notes |
+|---|:--:|---|
+| `messages` | yes | 1–200 entries, **oldest first**. Order matters: a summary built from a shuffled conversation summarises a conversation that never happened |
+| `targetTokens` | no | 50–4000. A target rather than a ratio, because what matters is the result relative to the model's input limit |
+| `model` | no | Absent means the configured default |
+| `temperature` | no | **Defaults to 0.2.** A summary is an act of compression; creativity is not a virtue here, and a summariser that embellishes invents things the user did not say |
+
+Turns are rendered into the instruction **role-prefixed**, so the model can tell who said what.
+Without that, "yes" in a summarisation request is ambiguous and a summary that misattributes a
+question is worse than no summary.
+
+**Response**
+
+```json
+{
+  "requestId": "…", "summary": "The user chose Postgres for operational simplicity.",
+  "model": "nexa-default", "provider": "OPENAI",
+  "summarisedTurnCount": 3, "summaryLengthChars": 52,
+  "inputTokens": 812, "outputTokens": 18,
+  "durationMillis": 940, "completedAt": "…"
+}
+```
+
+`summaryLengthChars` is **measured, not estimated**, so a caller can alert on a summary that did
+not actually compress.
+
+**Nothing is persisted here.** AI Service is stateless and holds no conversation, so it cannot
+remember that it produced a summary — and a summary it did not ask for is one it cannot clean up.
+The caller owns the memory and decides when to refresh it.
+
+Goes through the same router, the same bounded retry and the same failure classification as
+generation. An empty result is a **500**, not an empty summary: an empty summary is the worst
+outcome available, because the caller would store it, believe the context is covered, and stop
+sending the turns it just discarded.
+
+### 8.10 Chat Service memory routes
+
+Browser-facing, under `/api/v1/conversations/{conversationId}`. Every route is scoped to the caller,
+and another user's conversation returns the same 404 as one that does not exist.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/memory` | What the conversation remembers |
+| POST | `/memory/refresh` | Compress older turns now, rather than waiting for the budget |
+| DELETE | `/memory` | Forget the compressed memory |
+
+```json
+GET /memory
+{
+  "hasSummary": true,
+  "summarisedTurns": 48,
+  "summaryEstimatedTokens": 1204,
+  "summarisedAt": "2026-10-13T19:41:22.104Z",
+  "contextTokenBudget": 6000,
+  "summarisationEnabled": true
+}
+```
+
+**No route returns summary text.** A summary is a paraphrase of the user's own words; these routes
+report that one exists, how many turns it covers and how big it is — enough for the UI to explain
+itself — and never the content. Every additional copy of a user's words is another place they could
+leak from.
+
+`DELETE /memory` removes the compressed summary **only**. Messages are untouched and memory is
+rebuilt from them on the next send. "Forget what we discussed" and "delete the discussion" are
+different requests with different consequences, so they are different routes and, in the frontend,
+different controls.
+
+### 8.11 Chat Service stream relay
 
 `POST /api/v1/conversations/{conversationId}/messages` stores a message and creates the assistant
 placeholder. Streaming is a **separate** route, not a flag on that one:
@@ -1004,12 +1115,16 @@ placeholder. Streaming is a **separate** route, not a flag on that one:
 | Connect timeout | 5 s. An unreachable AI Service should fail fast rather than hold the connection for the full emitter timeout |
 | Emitter timeout | 5 minutes, bounded and configurable. It bounds holding a connection open with nothing to say, not generation |
 | Threading | Virtual thread. `SseEmitter.send` blocks until the browser consumes each frame, so doing this inline would pin a container thread for the whole generation |
+| Context | The caller sends `messages` (§8.2): the compressed summary first, then verbatim turns, oldest first. The question goes in `message` and AI Service appends it last |
+| Persistence | The user message and its placeholder are stored **before** the stream opens, and the reply is written onto that placeholder as tokens arrive — so a reload shows the same text, and a client that disconnects mid-stream still keeps what arrived |
 
 **Retry semantics:** retrying a generation re-opens the stream **only**. The question is already
 stored, and re-sending it would put two identical questions in the thread with one answer between
 them.
 
----## 9. Document Service
+---
+
+## 9. Document Service
 
 Port 8085. Owns `nexa_document`. Never embeds ([`ARCHITECTURE.md`](ARCHITECTURE.md) §7.1).
 

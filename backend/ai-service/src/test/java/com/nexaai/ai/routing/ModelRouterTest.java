@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.nexaai.ai.config.AiProperties;
+import com.nexaai.ai.model.ConversationTurn;
 import com.nexaai.ai.model.ModelCatalog;
 import com.nexaai.ai.model.ModelDescriptor;
 import com.nexaai.ai.provider.ProviderException;
@@ -512,11 +513,14 @@ class ModelRouterTest {
         @DisplayName("an over-long message is refused before any provider is contacted")
         void enforcesInputLimitBeforeCallingOut() {
             // Before, not after: a request that is certainly too long should not be billed.
+            List<ConversationTurn> enormous = List.of(
+                    new ConversationTurn(ConversationTurn.Kind.USER, "x".repeat(100_000)));
+
             assertThatThrownBy(() ->
-                    router.enforceInputLimit(catalog.find("nexa-default").orElseThrow(),
-                            "x".repeat(100_000)))
+                    router.enforceInputLimit(
+                            catalog.find("nexa-default").orElseThrow(), enormous))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("too long");
+                    .hasMessageContaining("too large");
 
             assertThat(openai.completeCalls()).isZero();
         }

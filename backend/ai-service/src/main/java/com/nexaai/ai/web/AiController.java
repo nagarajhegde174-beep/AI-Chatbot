@@ -1,13 +1,17 @@
 package com.nexaai.ai.web;
 
+import com.nexaai.ai.model.ConversationTurn;
 import com.nexaai.ai.model.ModelDescriptor;
 import com.nexaai.ai.provider.ProviderClient;
 import com.nexaai.ai.provider.ProviderException;
+import com.nexaai.ai.provider.ProviderFailureKind;
 import com.nexaai.ai.routing.ModelRouter;
 import com.nexaai.ai.usage.UsageRecord;
 import com.nexaai.ai.usage.UsageSink;
 import com.nexaai.ai.web.dto.GenerateRequest;
 import com.nexaai.ai.web.dto.GenerateResponse;
+import com.nexaai.ai.web.dto.SummarizeRequest;
+import com.nexaai.ai.web.dto.SummarizeResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -60,21 +64,72 @@ public class AiController {
 
     @PostMapping(value = "/generate", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Generate a completion",
-            description = "Selects a model, retries transient provider failures, and falls back "
-                    + "to another model on the same provider when the first cannot serve the "
-                    + "request.")
+            description = "Answers `message` in the context of `messages`. The server always "
+                    + "appends `message` as the final turn, so a caller cannot reorder history or "
+                    + "send a conversation whose last turn is not the question. Selects a model, "
+                    + "retries transient provider failures, and falls back to another model on "
+                    + "the same provider when the first cannot serve the request.")
     public GenerateResponse generate(@Valid @RequestBody GenerateRequest request) {
         String requestId = UUID.randomUUID().toString();
 
         ModelDescriptor model = router.select(request.modelOrNull());
-        router.enforceInputLimit(model, request.message());
+        List<ConversationTurn> turns = ConversationTurn.from(request.contextWithMessage());
 
-        ModelRouter.RoutedResult routed = router.complete(requestId, model.name(), null,
-                request.message(), request.temperature(), request.maxOutputTokens());
+        ModelRouter.RoutedResult routed = router.complete(requestId, model.name(), null, turns,
+                request.temperature(), request.maxOutputTokens());
 
         return GenerateResponse.from(requestId, routed.result().content(), routed.model(),
                 routed.fallbackUsed(), false, routed.result().inputTokens(),
                 routed.result().outputTokens(), routed.result().elapsed().toMillis());
+    }
+
+    // ------------------------------------------------------------------
+    // Summarisation
+    // ------------------------------------------------------------------
+
+    /**
+     * Compresses a run of older turns into a summary.
+     *
+     * <p><strong>A model call, not string manipulation.</strong> The whole value of a summary is
+     * that a model wrote it; a caller who could truncate or concatenate would produce something
+     * that looks like a summary and silently loses whatever the truncation dropped.
+     *
+     * <p><strong>Nothing is persisted here.</strong> This service is stateless and holds no
+     * conversation, so it cannot remember that it produced a summary, and a summary it did not ask
+     * for is one it cannot clean up. Chat Service owns the memory and decides when to refresh it.
+     */
+    @PostMapping(value = "/summarize", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Compress older conversation turns",
+            description = "Returns a summary of the supplied turns. The caller stores it; this "
+                    + "service holds no conversation state.")
+    public SummarizeResponse summarize(@Valid @RequestBody SummarizeRequest request) {
+        String requestId = UUID.randomUUID().toString();
+        List<ConversationTurn> turns = ConversationTurn.from(request.messages());
+        Instant started = Instant.now();
+
+        ModelRouter.RoutedResult routed = router.summarize(requestId, request.model(), turns,
+                request.targetTokensOrDefault(400), request.temperature());
+
+        String summary = routed.result().content();
+        if (summary == null || summary.isBlank()) {
+            // Recorded as a failure rather than returned as an empty summary. An empty summary is
+            // the worst outcome available: the caller stores it, believes the context is covered,
+            // and stops sending the turns it just discarded.
+            throw new ProviderException(ProviderFailureKind.UNKNOWN, routed.model(),
+                    "Summarisation returned an empty result.", null, java.time.Duration.ZERO);
+        }
+
+        return new SummarizeResponse(
+                requestId,
+                summary.trim(),
+                routed.model().name(),
+                routed.model().provider(),
+                turns.size(),
+                summary.trim().length(),
+                routed.result().inputTokens(),
+                routed.result().outputTokens(),
+                Duration.between(started, Instant.now()).toMillis(),
+                Instant.now());
     }
 
     // ------------------------------------------------------------------
@@ -103,7 +158,7 @@ public class AiController {
 
         String requestId = UUID.randomUUID().toString();
         ModelDescriptor model = router.select(request.modelOrNull());
-        router.enforceInputLimit(model, request.message());
+        List<ConversationTurn> turns = ConversationTurn.from(request.contextWithMessage());
 
         return Flux.defer(() -> {
             Instant started = Instant.now();
@@ -115,6 +170,15 @@ public class AiController {
                 return Flux.just(errorEvent("PROVIDER_UNAVAILABLE", unavailable));
             }
 
+            try {
+                // Measured before the stream opens, over the whole conversation rather than the
+                // new message. Refusing here means the caller gets a clean 400 and nothing has
+                // been billed; refusing after would mean a half-open stream and a provider error.
+                router.enforceInputLimit(model, turns);
+            } catch (IllegalArgumentException e) {
+                return Flux.just(errorEvent("CONTEXT_TOO_LARGE", e.getMessage()));
+            }
+
             ProviderClient client = router.providerFor(model).orElse(null);
             if (client == null) {
                 return Flux.just(errorEvent("PROVIDER_UNAVAILABLE",
@@ -123,7 +187,7 @@ public class AiController {
 
             Flux<String> tokens = client.stream(
                     new com.nexaai.ai.provider.ProviderMessages.GenerationRequest(
-                            model, null, request.message(), request.temperature(),
+                            model, null, turns, request.temperature(),
                             request.maxOutputTokens()));
 
             // Built in full before formatting. No trailing comma: the client parses this, and a

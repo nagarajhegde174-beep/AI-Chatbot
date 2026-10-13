@@ -204,13 +204,45 @@ public class SpringAiProviderClient implements ProviderClient {
     }
 
     private java.util.List<Message> messagesOf(ProviderMessages.GenerationRequest request) {
-        java.util.List<Message> messages = new java.util.ArrayList<>(2);
+        java.util.List<Message> messages = new java.util.ArrayList<>(request.turns().size() + 1);
+
         if (request.systemMessage() != null && !request.systemMessage().isBlank()) {
             messages.add(new SystemMessage(request.systemMessage()));
         }
-        messages.add(new UserMessage(request.userContent()));
+
+        for (com.nexaai.ai.model.ConversationTurn turn : request.turns()) {
+            messages.add(toSpringAiMessage(turn));
+        }
         return messages;
     }
+
+    /**
+     * One conversation turn as a Spring AI message.
+     *
+     * <p>A summary is sent as a <em>user</em> message with an explicit marker rather than as a
+     * system message. Two reasons, both load-bearing:
+     *
+     * <ul>
+     *   <li>There is no {@code SYSTEM} role for callers, so a summary must not smuggle one in.
+     *   <li>System messages sit outside the conversation and are treated as instructions. A
+     *       summary of the user's own words, sent as an instruction, is prompt injection with a
+     *       very convincing disguise.
+     * </ul>
+     *
+     * <p>The marker is what makes the model treat the text as recollection rather than as the most
+     * recent thing the user said.
+     */
+    private static Message toSpringAiMessage(com.nexaai.ai.model.ConversationTurn turn) {
+        return switch (turn.kind()) {
+            case USER -> new UserMessage(turn.content());
+            case ASSISTANT -> new AssistantMessage(turn.content());
+            case SUMMARY -> new UserMessage(SUMMARY_PREFIX + turn.content());
+        };
+    }
+
+    /** Marks compressed context so the model reads it as background, not as a fresh turn. */
+    private static final String SUMMARY_PREFIX =
+            "[Summary of earlier turns in this conversation]\n";
 
     /**
      * Per-call options, including temperature.

@@ -2,12 +2,14 @@ package com.nexaai.chat.client;
 
 import com.nexaai.chat.config.ChatProperties;
 import com.nexaai.chat.security.CallTokenHolder;
+import com.nexaai.chat.service.ConversationContext.ContextTurn;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
@@ -61,8 +63,12 @@ public class AiServiceStreamClient {
      * @param conversationId for correlation and logging. Never forwarded to the provider
      * @param content        the user's new message
      * @param model          the model name, passed through untouched
+     * @param context        the conversation context selected by
+     *                       {@link com.nexaai.chat.service.ConversationMemoryService}. May be
+     *                       empty, in which case this is a single-turn generation
      */
-    public void stream(UUID conversationId, String content, String model, SseEmitter emitter) {
+    public void stream(UUID conversationId, String content, String model,
+                       List<ContextTurn> context, SseEmitter emitter, StringBuilder streamed) {
         String token = callToken.get();
         if (token == null) {
             fail(emitter, "UNAUTHENTICATED",
@@ -73,9 +79,7 @@ public class AiServiceStreamClient {
         ChatProperties.Generation generation = properties.getGeneration();
         URI uri = URI.create(joinUrl(generation.getAiServiceUrl(), generation.getStreamPath()));
 
-        String body = "{\"model\":" + jsonString(model)
-                + ",\"message\":" + jsonString(content)
-                + ",\"conversationId\":" + jsonString(conversationId.toString()) + "}";
+        String body = buildRequestBody(conversationId, content, model, context);
 
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
@@ -105,8 +109,8 @@ public class AiServiceStreamClient {
                 return;
             }
 
-            try (Stream<String> lines = response.body()) {
-                relay(lines, emitter);
+                try (Stream<String> lines = response.body()) {
+                relay(lines, emitter, streamed);
             }
             emitter.complete();
 
@@ -127,6 +131,57 @@ public class AiServiceStreamClient {
     }
 
     /**
+     * The generate-stream request, carrying the selected context.
+     *
+     * <p><strong>Built here rather than serialised by a converter</strong> because this class
+     * already owns its own JSON escaping for the error events, and having two places that escape
+     * *differently* is how a quote in a user's message eventually breaks the request frame.
+     *
+     * <p>The new message goes in `message`, never in `messages`. AI Service appends it last
+     * itself, so a context that arrives out of order, or without the question, is impossible to
+     * express rather than merely unlikely.
+     */
+    private String buildRequestBody(UUID conversationId, String content, String model,
+                                    List<ContextTurn> context) {
+        StringBuilder out = new StringBuilder("{");
+        if (model != null && !model.isBlank()) {
+            out.append("\"model\":").append(jsonString(model)).append(',');
+        }
+        out.append("\"message\":").append(jsonString(content)).append(',');
+        out.append("\"conversationId\":").append(jsonString(conversationId.toString()));
+
+        if (context != null && !context.isEmpty()) {
+            out.append(",\"messages\":[");
+            for (int i = 0; i < context.size(); i++) {
+                if (i > 0) {
+                    out.append(',');
+                }
+                ContextTurn turn = context.get(i);
+                out.append("{\"role\":\"").append(aiRole(turn)).append("\",\"content\":")
+                        .append(jsonString(turn.content())).append('}');
+            }
+            out.append(']');
+        }
+        return out.append('}').toString();
+    }
+
+    /**
+     * The role name AI Service expects.
+     *
+     * <p>A turn this service has already compressed is labelled `SUMMARY`, so the model reads it
+     * as recollection. Sent as `USER` it would present a paraphrase of many turns as something
+     * the user just said, and the model would treat the summary itself as the subject of the
+     * question.
+     */
+    private static String aiRole(ContextTurn turn) {
+        if (turn.fromSummary()) {
+            return "SUMMARY";
+        }
+        return turn.role() == com.nexaai.chat.domain.MessageRole.ASSISTANT
+                ? "ASSISTANT" : "USER";
+    }
+
+    /**
      * Re-assembles upstream SSE frames and re-emits them one at a time.
      *
      * <p>An SSE frame is an {@code event:} line and a {@code data:} line belonging to the SAME
@@ -139,7 +194,8 @@ public class AiServiceStreamClient {
      * ended would produce correct final text and no progressive rendering at all — a feature that
      * passes a test which only reads the whole body and does nothing for a real user.
      */
-    private void relay(Stream<String> lines, SseEmitter emitter) throws IOException {
+    private void relay(Stream<String> lines, SseEmitter emitter, StringBuilder streamed)
+            throws IOException {
         String eventName = null;
         StringBuilder data = new StringBuilder();
         boolean sawField = false;
@@ -149,7 +205,7 @@ public class AiServiceStreamClient {
             if (line.isEmpty()) {
                 // Blank line: end of frame.
                 if (sawField) {
-                    emitter.send(frame(eventName, data.toString()));
+                    emitter.send(frame(eventName, accumulate(eventName, data.toString(), streamed)));
                 }
                 eventName = null;
                 data.setLength(0);
@@ -178,8 +234,40 @@ public class AiServiceStreamClient {
 
         // A stream that ends without a trailing blank line still has a final frame to deliver.
         if (sawField) {
-            emitter.send(frame(eventName, data.toString()));
+            emitter.send(frame(eventName, accumulate(eventName, data.toString(), streamed)));
         }
+    }
+
+    /**
+     * Accumulates the streamed text so it can be persisted.
+     *
+     * <p>Only {@code token} frames contribute. {@code meta} and {@code done} carry ids and
+     * timings, and appending their JSON to the answer would store the envelope as though the
+     * model had said it.
+     *
+     * <p>Accumulated as the text is RELAYED, not at the end, so a client that disconnects
+     * mid-stream still leaves the partial answer on the message row. A generation the user
+     * watched to 80% and then closed the tab is real work.
+     */
+    private static String accumulate(String eventName, String data, StringBuilder streamed) {
+        if (streamed == null || !"token".equals(eventName)) {
+            return data;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode node =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(data);
+            com.fasterxml.jackson.databind.JsonNode text = node.get("text");
+            if (text != null && !text.isNull()) {
+                synchronized (streamed) {
+                    streamed.append(text.asText());
+                }
+            }
+        } catch (Exception e) {
+            // A malformed token frame is dropped from the persisted text rather than appended raw.
+            // The browser still received it; only the stored copy is affected, and storing JSON
+            // envelope as though the model had said it would be worse.
+        }
+        return data;
     }
 
     /**
