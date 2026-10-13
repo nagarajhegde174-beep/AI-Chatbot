@@ -30,7 +30,8 @@ configuration, source tree, tests and Dockerfile **when that service is implemen
 explicitly authorised phase**.
 
 **Five are implemented: `api-gateway`, `auth-service`, `user-service`, `chat-service`
-and `ai-service`.** 469 tests pass across them. The other three directories hold a README
+and `ai-service`.** 493 tests pass across them (auth 87, user 120, gateway 51, chat 124, ai 142).
+The other three directories hold a README
 describing their boundary and nothing else.
 
 Unimplemented service directories must remain **non-functional** and must **not** receive fake
@@ -44,8 +45,8 @@ implemented only when its phase has been explicitly authorised and completed.
 | `api-gateway` | 8080 | *none* | Public entry. Token validation, routing, CORS, correlation ids. **No rate limits yet** |
 | `auth-service` | 8081 | `nexa_auth` | Credentials, tokens, account status |
 | `user-service` | 8082 | `nexa_user` | Profile, preferences, administration |
-| `chat-service` | 8083 | `nexa_chat` | Conversations, messages, history, feedback. **Relays the SSE stream; blocking generation and memory window not yet** |
-| `ai-service` | 8084 | *none* | **Implemented.** Stateless multi-model inference: model router, fallback, retry, availability, health, usage, SSE. No gateway route, by design |
+| `chat-service` | 8083 | `nexa_chat` | Conversations, messages, history, feedback. **Owns conversation memory**: context selection, token-aware windowing, summarisation, clearing. Relays the SSE stream |
+| `ai-service` | 8084 | *none* | **Implemented.** Stateless multi-model inference: model router, fallback, retry, availability, health, usage, SSE, and `/summarize`. No gateway route, by design |
 | `document-service` | 8085 | `nexa_document` | Upload, extraction, chunking |
 | `rag-service` | 8086 | `nexa_rag` | Embeddings, pgvector retrieval |
 | `subscription-service` | 8087 | `nexa_subscription` | Plans, entitlements, Razorpay test orders |
@@ -147,6 +148,20 @@ hold only a README each.
   that was not a UUID turned every "valid token" test into a silent assertion of 401.
 - **A wrapped comment whose continuation lines start with prose fails its own CI rule.** Rule R5
   strips comment lines *starting* with a marker; prefix every line of an XML comment.
+- **Memory is keyed by conversation, not by user.** That makes cross-conversation leakage
+  structurally impossible rather than merely guarded: a query that forgot the owner predicate still
+  could not reach another conversation's row. The owner is carried anyway, as defence in depth.
+- **An empty summary is worse than no summary.** Storing one makes the caller believe the context
+  is covered and stop sending the turns it just discarded. A summariser that returns nothing stores
+  nothing, and the reply proceeds.
+- **Summarisation folds the previous summary in.** Overwriting it instead makes a conversation
+  slowly forget its own beginning, and every individual pass looks correct.
+- **A failed memory optimisation must not fail a reply.** Otherwise every reply depends on a second
+  model call succeeding.
+- **"Forget" and "delete" are different requests.** Clearing memory keeps the messages and rebuilds;
+  deleting a conversation does not. They are offered in different places with different labels.
+- **Never send unbounded history.** The guarantee is a backward walk against one token budget, and a
+  fallback model with a smaller window is skipped rather than sent a prompt that will not fit it.
 
 ---
 ---

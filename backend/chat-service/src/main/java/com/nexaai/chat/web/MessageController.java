@@ -5,6 +5,8 @@ import com.nexaai.chat.config.ChatProperties;
 import com.nexaai.chat.domain.FeedbackRating;
 import com.nexaai.chat.security.CurrentCaller;
 import com.nexaai.chat.service.FeedbackService;
+import com.nexaai.chat.service.ConversationContext;
+import com.nexaai.chat.service.ConversationMemoryService;
 import com.nexaai.chat.service.ConversationService;
 import com.nexaai.chat.service.MessageService;
 import com.nexaai.chat.web.dto.EditMessageRequest;
@@ -51,15 +53,18 @@ public class MessageController {
     private final AiServiceStreamClient streamClient;
     private final ChatProperties properties;
     private final ConversationService conversations;
+    private final ConversationMemoryService conversationMemory;
 
     public MessageController(MessageService messages, FeedbackService feedback,
                              AiServiceStreamClient streamClient, ChatProperties properties,
-                             ConversationService conversations) {
+                             ConversationService conversations,
+                             ConversationMemoryService conversationMemory) {
         this.messages = messages;
         this.feedback = feedback;
         this.streamClient = streamClient;
         this.properties = properties;
         this.conversations = conversations;
+        this.conversationMemory = conversationMemory;
     }
 
     // ------------------------------------------------------------------
@@ -91,24 +96,103 @@ public class MessageController {
                                   @Valid @RequestBody SendMessageRequest request) {
         UUID owner = CurrentCaller.authUserId();
 
-        // Ownership is proven BEFORE a stream opens. A stream that opens and then 404s leaves the
-        // client holding a connection to nothing, and makes "you may not do this" look like a
-        // network failure. Another user's conversation raises the same 404 as a nonexistent one,
-        // so this cannot be used to discover real ids.
+        // Ownership is proven BEFORE anything is written. A stream that opens and then 404s
+        // leaves the client holding a connection to nothing, and makes "you may not do this" look
+        // like a network failure. Another user's conversation returns the same 404 as one that
+        // does not exist, so this cannot be used to discover real ids.
         conversations.getOwned(owner, conversationId);
+
+        String model = request.model() == null || request.model().isBlank()
+                ? properties.getGeneration().getDefaultModel()
+                : request.model();
+
+        // The user message and its placeholder are stored BEFORE the stream opens, exactly as the
+        // non-streaming path does. Two consequences, both required:
+        //
+        //   - a refresh mid-generation shows the question and a reply slot rather than nothing
+        //   - the assistant turn exists before the text arrives, so the reply is persisted onto a
+        //     row that is already part of the conversation rather than created afterwards
+        //
+        // Context is selected BEFORE this write, so the question being asked is not also sent as
+        // prior context and answered twice.
+        MessageService.SendResult stored = messages.send(owner, conversationId,
+                request.content(), model);
 
         SseEmitter emitter = new SseEmitter(properties.getGeneration().getStreamTimeout().toMillis());
 
         // Runs off the request thread: SseEmitter.send blocks until the browser consumes each
         // frame, so doing this inline would pin a container thread for the whole generation.
-        Thread.ofVirtual().name("nexa-chat-stream-" + conversationId).start(() ->
-                streamClient.stream(conversationId, request.content(),
-                        request.model() == null || request.model().isBlank()
-                                ? properties.getGeneration().getDefaultModel()
-                                : request.model(),
-                        emitter));
+        Thread.ofVirtual().name("nexa-chat-stream-" + conversationId).start(() -> {
+            ConversationContext context = memoryForGeneration(owner, conversationId,
+                    request.content());
+
+            // Tracks the text as it arrives, so the reply is persisted even if the client
+            // disconnects mid-stream. A generation the user watched to 80% and then abandoned is
+            // real work that should not be thrown away.
+            StringBuilder streamed = new StringBuilder();
+
+            emitter.onCompletion(() -> persistStreamedReply(owner, stored, streamed, model, null));
+            emitter.onError(t -> persistStreamedReply(owner, stored, streamed, model,
+                    "The stream ended unexpectedly."));
+            emitter.onTimeout(() -> persistStreamedReply(owner, stored, streamed, model,
+                    "Generation took too long and was stopped."));
+
+            streamClient.stream(conversationId, request.content(), model, context.turns(),
+                    emitter, streamed);
+        });
 
         return emitter;
+    }
+
+    /**
+     * Writes the streamed reply onto the placeholder created before the stream opened.
+     *
+     * <p><strong>Safe to call more than once.</strong> Completion, error and timeout can all fire,
+     * and a user who stopped a generation has produced real text worth keeping rather than
+     * discarding. Whichever outcome lands first wins; a later one finds the message already
+     * terminal and changes nothing.
+     *
+     * @param streamed the text accumulated so far. Persisted only when non-empty, because writing
+     *                  an empty completion would render as a blank answer that looks like success
+     */
+    private void persistStreamedReply(UUID owner, MessageService.SendResult stored,
+                                      StringBuilder streamed, String model, String failureReason) {
+        try {
+            String content = streamed.toString().trim();
+            if (content.isEmpty()) {
+                if (failureReason != null) {
+                    messages.markGenerationFailed(owner, stored.assistantMessage().id(),
+                            failureReason);
+                }
+                return;
+            }
+            messages.completeGeneration(owner, stored.assistantMessage().id(), content, model);
+        } catch (RuntimeException e) {
+            // Logged by type. The exception may carry the generated text.
+            org.slf4j.LoggerFactory.getLogger(MessageController.class)
+                    .warn("Could not persist a streamed reply: {}", e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Selects the context for a generation, compressing first if the conversation has outgrown it.
+     *
+     * <p><strong>Never fails the request.</strong> Summarisation returning nothing means the
+     * conversation proceeds with verbatim turns and, if that will not fit, with the oldest dropped.
+     * Refusing to answer because a memory optimisation could not run would make every reply
+     * depend on a second model call succeeding.
+     */
+    private ConversationContext memoryForGeneration(UUID owner, UUID conversationId,
+                                                    String question) {
+        try {
+            return conversationMemory.prepareForGeneration(owner, conversationId, question);
+        } catch (RuntimeException e) {
+            // Logged by type. The exception may carry the user's message.
+            org.slf4j.LoggerFactory.getLogger(MessageController.class)
+                    .warn("Context selection failed for conversation {}: {}",
+                            conversationId, e.getClass().getSimpleName());
+            return conversationMemory.selectContext(owner, conversationId, question);
+        }
     }
 
     // ------------------------------------------------------------------

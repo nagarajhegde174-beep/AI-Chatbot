@@ -257,7 +257,8 @@ class DatabaseIsolationTest {
              var rs = statement.executeQuery("""
                      select table_name, column_name from information_schema.columns
                      where table_schema = 'nexa_chat'
-                       and column_name not in ('input_tokens', 'output_tokens')
+                       and column_name not in ('input_tokens', 'output_tokens',
+                                            'summary_estimated_tokens')
                        and (column_name like '%password%'
                          or column_name like '%hash%'
                          or column_name like '%secret%'
@@ -288,7 +289,8 @@ class DatabaseIsolationTest {
              var rs = statement.executeQuery("""
                      select column_name, data_type from information_schema.columns
                      where table_schema = 'nexa_chat'
-                       and column_name in ('input_tokens', 'output_tokens')
+                       and column_name in ('input_tokens', 'output_tokens',
+                                            'summary_estimated_tokens')
                      """)) {
 
             int found = 0;
@@ -299,7 +301,11 @@ class DatabaseIsolationTest {
                                 rs.getString("column_name"))
                         .isEqualTo("integer");
             }
-            assertThat(found).as("both metering columns should exist").isEqualTo(2);
+            // Every excluded column is asserted here, so the exclusion list cannot quietly grow
+            // into a loophole by someone adding a name and never checking what it holds. That is
+            // why the count is asserted rather than merely "at least two".
+            assertThat(found).as("every excluded token column must exist and be numeric")
+                    .isEqualTo(3);
         }
     }
 

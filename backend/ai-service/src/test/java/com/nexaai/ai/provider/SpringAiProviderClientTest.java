@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.nexaai.ai.config.AiProperties;
+import com.nexaai.ai.model.ConversationTurn;
 import com.nexaai.ai.model.ModelDescriptor;
 import com.nexaai.ai.model.ProviderKind;
 import com.nexaai.ai.support.StubChatModel;
 import com.nexaai.ai.support.StubStreamingChatModel;
 import com.nexaai.ai.support.TestContext;
+import com.nexaai.ai.web.dto.ContextMessage;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -65,7 +67,8 @@ class SpringAiProviderClientTest {
 
     private static ProviderMessages.GenerationRequest request(ModelDescriptor model,
                                                               String content) {
-        return new ProviderMessages.GenerationRequest(model, null, content, null, null);
+        return new ProviderMessages.GenerationRequest(model, null,
+                List.of(ConversationTurn.of(ContextMessage.Role.USER, content)), null, null);
     }
 
     // ==================================================================
@@ -246,7 +249,8 @@ class SpringAiProviderClientTest {
 
             ModelDescriptor model = model("m", "OPENAI");
             client(ProviderKind.OPENAI).complete(new ProviderMessages.GenerationRequest(model,
-                    "be concise", "hi", null, null));
+                    "be concise",
+                    List.of(ConversationTurn.of(ContextMessage.Role.USER, "hi")), null, null));
 
             assertThat(stub.lastPrompt().getInstructions())
                     .anySatisfy(message ->
@@ -282,7 +286,8 @@ class SpringAiProviderClientTest {
 
             ModelDescriptor model = model("m", "OPENAI");
             client(ProviderKind.OPENAI).complete(new ProviderMessages.GenerationRequest(model,
-                    null, "hi", 0.25, null));
+                    null, List.of(ConversationTurn.of(ContextMessage.Role.USER, "hi")),
+                    0.25, null));
 
             assertThat(stub.lastPrompt().getOptions()).isNotNull();
         }

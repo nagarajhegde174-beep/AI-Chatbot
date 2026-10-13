@@ -16,6 +16,7 @@ public class ChatProperties {
     private final Jwt jwt = new Jwt();
     private final Limits limits = new Limits();
     private final Generation generation = new Generation();
+    private final Memory memory = new Memory();
     private final Event event = new Event();
     private final UserServiceClient userService = new UserServiceClient();
 
@@ -25,6 +26,10 @@ public class ChatProperties {
 
     public Limits getLimits() {
         return limits;
+    }
+
+    public Memory getMemory() {
+        return memory;
     }
 
     public Generation getGeneration() {
@@ -235,6 +240,98 @@ public class ChatProperties {
     }
 
     /** Inbound event settings. */
+    /**
+     * Conversation memory: how much context is carried, when it is compressed, and what it costs.
+     *
+     * <p><strong>The budget is this service's, not AI Service's.</strong> The model catalogue —
+     * which model has which context window — belongs to AI Service, and duplicating it here would
+     * be a second thing to keep in sync and a second thing to get wrong. So this budget is a
+     * platform policy, set conservatively enough to fit any configured model, and AI Service
+     * remains the final authority: it refuses anything that does not fit the model actually
+     * chosen. Belt and braces, each layer catching the other's mistake.
+     */
+    public static class Memory {
+
+        /**
+         * Total approximate tokens of context to send with a request.
+         *
+         * <p>Covers the summary AND the verbatim turns. Deliberately well under the smallest
+         * configured model's window: a conversation that fits this budget fits every model, so
+         * changing model mid-conversation never causes a surprise rejection.
+         */
+        private int contextTokenBudget = 6000;
+
+        /**
+         * How many of the most recent turns are always sent verbatim, whatever else is dropped.
+         *
+         * <p>Token-based selection alone will, under pressure, drop the turn immediately before
+         * the question — which is usually the one that explains what the question refers to. The
+         * result is a model confidently answering a question whose subject it can no longer see.
+         */
+        private int alwaysKeepRecentTurns = 6;
+
+        /**
+         * Fraction of the budget above which older turns get compressed.
+         *
+         * <p>Summarisation costs a model call, so it must not run on every message. Triggering at
+         * half the budget means it runs when there is genuine pressure and not before, and that
+         * the summary plus the kept turns fit with room to spare.
+         */
+        private double summariseThreshold = 0.5;
+
+        /**
+         * Whether summarisation runs at all.
+         *
+         * <p>Off is a supported configuration, not a degraded one: with it off, memory is still
+         * context-window managed, it just uses verbatim turns only and refuses a conversation
+         * too long to fit rather than compressing it.
+         */
+        private boolean summarisationEnabled = true;
+
+        /** How long to wait for a summarisation call. Separate from the generation timeout. */
+        private Duration summariseTimeout = Duration.ofSeconds(45);
+
+        public int getContextTokenBudget() {
+            return contextTokenBudget;
+        }
+
+        public void setContextTokenBudget(int contextTokenBudget) {
+            this.contextTokenBudget = contextTokenBudget;
+        }
+
+        public int getAlwaysKeepRecentTurns() {
+            return alwaysKeepRecentTurns;
+        }
+
+        public void setAlwaysKeepRecentTurns(int alwaysKeepRecentTurns) {
+            this.alwaysKeepRecentTurns = alwaysKeepRecentTurns;
+        }
+
+        public double getSummariseThreshold() {
+            return summariseThreshold;
+        }
+
+        public void setSummariseThreshold(double summariseThreshold) {
+            this.summariseThreshold = summariseThreshold;
+        }
+
+        public boolean isSummarisationEnabled() {
+            return summarisationEnabled;
+        }
+
+        public void setSummarisationEnabled(boolean summarisationEnabled) {
+            this.summarisationEnabled = summarisationEnabled;
+        }
+
+        public Duration getSummariseTimeout() {
+            return summariseTimeout;
+        }
+
+        public void setSummariseTimeout(Duration summariseTimeout) {
+            this.summariseTimeout = summariseTimeout;
+        }
+    }
+
     public static class Event {
 
         /**

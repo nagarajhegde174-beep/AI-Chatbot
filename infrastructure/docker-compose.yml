@@ -340,6 +340,17 @@ services:
       # cannot connect reports itself as one error event rather than the
       # service refusing to boot.
       NEXA_CHAT_GENERATION_AI_SERVICE_URL: "http://ai-service:8084"
+
+      # Conversation memory. The budget is the guarantee that history is
+      # never sent unbounded, so it is set explicitly rather than left to a
+      # default an operator has to go looking for. Kept well under every
+      # configured model's context window: AI Service refuses anything that
+      # does not fit the model actually chosen, so this layer and that one
+      # each catch the other's mistake.
+      NEXA_CHAT_MEMORY_TOKEN_BUDGET: "${CHAT_MEMORY_TOKEN_BUDGET:-6000}"
+      NEXA_CHAT_MEMORY_KEEP_RECENT: "${CHAT_MEMORY_KEEP_RECENT:-6}"
+      NEXA_CHAT_MEMORY_SUMMARISE_ENABLED: "${CHAT_MEMORY_SUMMARISE_ENABLED:-true}"
+      NEXA_CHAT_MEMORY_SUMMARISE_THRESHOLD: "${CHAT_MEMORY_SUMMARISE_THRESHOLD:-0.5}"
       NEXA_CHAT_EVENT_ENABLED: "false"
     depends_on:
       postgres:

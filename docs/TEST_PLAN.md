@@ -276,12 +276,99 @@ Statelessness and configuration:
       streaming parser and the Markdown renderer are verified by inspection and by type-checking
       only. This is the same gap recorded in Phase 3 and it is now larger.
 
-### Phase 5 - Chat memory window
-- [ ] The window actually sent to a model is the last N turns, not the whole history
-- [ ] A token estimate is recorded and a too-large window is refused, not silently truncated
-- [ ] A generated reply is persisted on the message row, so a reload shows the same text
-- [ ] A `PENDING` placeholder stuck from a crash is reconciled rather than shown forever
-- [ ] Generation through `ChatGenerationPort` using a **service credential** (`ARCHITECTURE.md` §16c)
+### Phase 5 - Conversation memory
+
+**32 new tests (chat-service 124, ai-service 142). Context selection, windowing, summarisation, clearing.**
+
+Context retrieval and selection:
+
+- [x] A new conversation has an empty, bounded context
+- [x] Earlier turns are carried forward, oldest first, with the question last
+- [x] **The turn being answered is ALWAYS last**, whatever else is dropped
+- [x] The whole conversation reaches the provider, in order, unaltered
+- [x] A summary is sent as its own kind, ahead of the verbatim turns
+- [x] Fallback preserves the whole conversation, not just the last turn
+- [x] A `PENDING` placeholder is never sent as context
+- [x] **An empty turn list is refused**, not sent to a provider as an empty prompt
+- [x] A blank turn is refused, because it carries no information
+
+Token-aware limits:
+
+- [x] **The WHOLE prompt is measured**, not just the newest turn
+- [x] An oversized conversation is refused **before** any provider is called
+- [x] The error names both numbers, so the caller can decide what to do
+- [x] **A fallback model whose window is too small is SKIPPED**, not sent an oversized prompt
+- [x] Headroom is reported, so a caller can size a window without guessing
+- [x] Token counts stay `null`, never `0`, when a provider reports nothing
+
+Long conversations:
+
+- [x] 300 turns produce a bounded context
+- [x] **A four-times-longer conversation does not produce a bigger context** — the invariant,
+      stated as a relationship rather than a magic number
+- [x] Dropped turns are counted and reported, never silently truncated
+- [x] A conversation that has compressed its history says so
+
+Summarisation:
+
+- [x] A summary is produced by a model call, not by truncation — asserted by call count
+- [x] The transcript is role-prefixed, so a summary cannot misattribute a turn
+- [x] Summarisation uses a low temperature by default (0.2)
+- [x] An explicit temperature is respected
+- [x] Summarisation goes through retry and fallback like any other call
+- [x] **The oldest turns are compressed**, never the newest
+- [x] Compression runs on the first over-budget pass
+- [x] The summary is persisted with the sequence range it covers
+- [x] Repeated compression **folds the old summary in** rather than discarding it
+- [x] Compression keeps the context bounded afterwards
+
+Clearing memory:
+
+- [x] Clearing succeeds and reports what was forgotten
+- [x] **Clearing memory does NOT delete the conversation's messages**
+- [x] The conversation still works afterwards
+- [x] Clearing twice is harmless
+- [x] Clearing an unknown conversation is a 404
+- [x] After clearing, memory **rebuilds** from the messages that still exist
+
+Model failure:
+
+- [x] A summariser returning nothing stores **NO** summary — an empty one would make the caller
+      believe the context was covered and stop sending the turns it discarded
+- [x] A summariser that **throws** does not block the reply
+- [x] A failed summarisation does not poison the conversation into never remembering itself
+
+Memory isolation:
+
+- [x] Another user's conversation memory cannot be read
+- [x] Another user's memory cannot be cleared
+- [x] Another user's 404 is identical to one that does not exist (traceId and timestamp normalised)
+- [x] **Context from one conversation never appears in another**
+- [x] Memory routes require authentication; GET 401, DELETE 403 before auth (CSRF first)
+- [x] Memory status never returns summary TEXT
+- [x] The router holds no conversation content between calls
+
+Frontend:
+
+- [x] Memory strip shows what a conversation remembers, and how much
+- [x] "Compress" and "Forget" are offered separately, and Forget only when there is something
+- [x] A failed memory read is swallowed — a memory feature must not take the conversation offline
+- [x] `prefers-reduced-motion` honoured for the spinner
+
+**Not covered, recorded rather than implied:**
+
+- [ ] **No summarisation has ever run against a real model.** There are no credentials and no
+      network, so the success path is exercised against a stubbed `MemorySummarizer` while
+      everything above the seam — selection rules, range arithmetic, persistence, the HTTP surface —
+      is the real implementation.
+- [ ] **No end-to-end streaming run.** The relayed stream has never been exercised against a live
+      AI Service; the stream client is covered by construction and the AI Service side by its own
+      wire-format tests.
+- [ ] **The blocking `ChatGenerationPort` is still disabled**, so the `POST /messages` route still
+      leaves a `PENDING` placeholder. See `ARCHITECTURE.md` §16c.
+- [ ] **No frontend tests.** Still no test runner, so `MemoryStrip` and the memory wiring are
+      type-checked and linted only.
+
 ### Phase 6 — Document Service
 - [ ] Unit: chunking preserves sentence boundaries, size and overlap respected
 - [ ] Integration: upload, extract, chunk against real PostgreSQL and real files

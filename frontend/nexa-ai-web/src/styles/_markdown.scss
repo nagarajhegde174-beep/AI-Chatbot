@@ -335,3 +335,76 @@
   white-space: nowrap;
   border: 0;
 }
+// =====================================================================
+// Conversation memory strip.
+//
+// Sits directly above the composer, between the thread and the input,
+// because what it reports is about the NEXT thing that will be sent.
+// =====================================================================
+
+.memory-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.4rem 0.9rem;
+  border-top: 1px solid var(--bs-border-color);
+  background: var(--nexa-surface-sunken);
+  font-size: 0.82rem;
+  color: var(--bs-secondary-color);
+}
+
+.memory-strip__info {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+
+  svg {
+    flex: none;
+    color: var(--bs-secondary-color);
+  }
+}
+
+// Truncated with an ellipsis rather than wrapped. This is a status line, and
+// a two-line paragraph above the input box pushes the thread up on every
+// update, which makes the whole page feel unstable.
+.memory-strip__summary,
+.memory-strip__idle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-strip__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+}
+
+// The error is on its own line rather than replacing the summary, so the
+// controls stay where they were and the layout does not jump.
+.memory-strip__error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--bs-danger-text-emphasis);
+  font-size: 0.8rem;
+}
+
+.spin {
+  animation: nexa-spin 0.9s linear infinite;
+}
+
+@keyframes nexa-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}

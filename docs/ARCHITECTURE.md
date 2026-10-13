@@ -557,7 +557,7 @@ ahead.
 | 2 | User Service + API Gateway: profile, preferences, administration, routing, edge auth | Complete |
 | 3 | Chat Service + frontend foundation: conversations, messages, feedback, export | Complete |
 | 4 | AI Service: Spring AI providers, streaming. Completes the `ChatGenerationPort` seam | Complete |
-| 5 | Chat: memory window, message persistence of generated replies | Not started |
+| 5 | Conversation memory: context selection, token-aware windowing, summarisation, clearing | Complete |
 | 6 | Document Service: upload, extraction, chunking | Not started |
 | 7 | RAG Service: embeddings, pgvector, retrieval | Not started |
 | 8 | RAG integration: grounded answers, citations | Not started |
@@ -723,18 +723,121 @@ audit trail and log statements, and the principal must not be able to read its o
 ---
 
 | Service | Port | Status |
+---
+
+## 16d. Conversation memory
+
+### The rule everything else serves
+
+**History is never sent unbounded.** Every generation carries a context selected against a
+configured token budget, and that budget *is* the guarantee. This is not an optimisation that can
+fail open: the selection is a single backward walk with one budget, and a conversation of any length
+produces a context that fits.
+
+The failure it prevents is the obvious one. A user thirty turns into a conversation gets either an
+error about context length, or — worse — a provider that silently truncates and a model that answers
+the wrong question confidently.
+
+### Where the memory lives, and why there
+
+In Chat Service's database, keyed by **conversation**, in `conversation_memory`.
+
+| Alternative | Why not |
+|---|---|
+| AI Service | Stateless by design (rule R5), and could not remember a conversation across a restart |
+| The browser | User-editable, unverifiable, and lost on a device change |
+| A key-value cache | Redis is cache-only in this architecture, and memory must survive eviction |
+
+Keying by conversation rather than by user is a deliberate structural choice: it makes
+cross-conversation leakage **impossible** rather than merely guarded. A query that forgot the owner
+predicate still could not reach another conversation's row. `owner_auth_user_id` is carried and
+filtered on anyway, because a row whose owner disagrees with its conversation is a bug worth
+refusing rather than reading.
+
+The table holds only the **compressed** form. Verbatim messages stay in `chat_message` and are never
+touched, so memory is a *derived index*: it can be dropped and rebuilt at any time without losing a
+message. That is what makes "clear memory" a safe offer at all.
+
+### Selection
+
+1. Read the summary, if any, and subtract its cost from the budget **first** — it is the cheapest
+   way to keep the oldest context.
+2. Always keep the newest `always-keep-recent-turns`, and **at minimum the turn being answered**.
+3. Walk backwards through the remaining history while there is room.
+4. Whatever did not fit is **dropped and reported**, never silently truncated.
+
+`always-keep-recent-turns` exists because token-based selection alone, under pressure, drops the
+turn immediately before the question — usually the one that explains what the question refers to.
+The result is a confident answer to a question whose subject the model can no longer see.
+
+### Summarisation
+
+Compression is a **model call**, not string manipulation. Truncating a conversation produces
+something that looks like a summary and silently drops whatever was cut — including the question the
+summary was meant to explain. It goes through AI Service's `/summarize`, and therefore through the
+same router, the same retry policy and the same provider classification as generation.
+
+Three decisions that are not obvious:
+
+- **It compresses from the oldest end.** Compressing the newest turns would discard exactly the
+  context that explains the question being asked.
+- **It folds the existing summary in.** Without that, repeated compression keeps overwriting the
+  earliest context and the conversation slowly forgets its own beginning — the most insidious
+  failure in a memory feature, because every individual pass looks correct.
+- **It runs on the first over-budget pass, not a later one.** A user whose conversation has already
+  outgrown the budget should not have to ask twice, and waiting costs a turn in which they get a
+  worse answer than they needed.
+
+**A failed summarisation never fails the reply.** Summarisation is an optimisation; refusing to
+answer because it could not run would make every reply depend on a second model call succeeding. A
+null or empty summary stores **nothing** — storing an empty one is the worst outcome available,
+because the caller would believe the context was covered and stop sending the turns it discarded.
+
+### Two budgets, deliberately
+
+Chat Service sets a policy budget; AI Service enforces the model's real limit and refuses anything
+that does not fit.
+
+Duplicating the model catalogue in Chat Service to be precise would be a second thing to keep in
+sync and a second thing to get wrong. So Chat Service's budget is set low enough to fit any
+configured model, and AI Service is the final authority. Each layer catches the other's mistake,
+which is cheaper than either being exactly right and the other being exactly wrong.
+
+### Token estimation is an approximation, and that is fine
+
+Roughly four characters per token, plus a flat per-turn overhead — because a conversation of very
+short messages pays role and framing costs many times over, and ignoring that makes a hundred
+one-word messages look free when they are not.
+
+A real tokenizer is per-model, tens of megabytes, and a per-request cost for a number that only
+ever needs to be an **upper bound**. Overestimating wastes a little context; underestimating
+produces a provider-side rejection, which is the more expensive error.
+
+### Clearing is not deleting
+
+"Forget what we discussed" and "delete the discussion" are different requests with different
+consequences. Clearing resets the summary and rewinds the covered sequence so the next send rebuilds
+from messages that still exist. Deleting removes the user's own words permanently.
+
+The frontend offers them in different places, with different labels, for exactly this reason.
+
+---
+
+## 17. Current implementation status
+
+| Service | Port | Status |
 |---|:--:|---|
 | auth-service | 8081 | **Implemented.** 87 tests pass against real PostgreSQL 17 |
 | user-service | 8082 | **Implemented.** 120 tests pass against real PostgreSQL 17 |
 | api-gateway | 8080 | **Implemented.** 51 tests pass, over real HTTP |
-| chat-service | 8083 | **Implemented.** 92 tests pass against real PostgreSQL 17 |
-| ai-service | 8084 | **Implemented.** 119 tests. Stateless — owns no database |
+| chat-service | 8083 | **Implemented.** 124 tests pass against real PostgreSQL 17 |
+| ai-service | 8084 | **Implemented.** 142 tests. Stateless — owns no database |
 | document-service | 8085 | Not started |
 | rag-service | 8086 | Not started |
 | subscription-service | 8087 | Not started |
 
-**469 tests pass across the five implemented services:** auth 87, user 120, api-gateway 51,
-chat 92, ai 119.
+**493 tests pass across the five implemented services:** auth 87, user 120, api-gateway 51,
+chat 124, ai 142.
 
 **Verified for auth-service:** registration, sign-in, RS256 tokens in HTTP-only cookies, refresh
 rotation with reuse detection, logout, email verification, password reset and change, Google OAuth,
@@ -768,20 +871,25 @@ wrong-issuer and wrong-audience tokens, and with an assertion that no response b
 a provider credential.
 
 **Not yet wired:** the blocking `ChatGenerationPort` in Chat Service still resolves to
-`DisabledChatGenerationPort`, so a sent message leaves a `PENDING` placeholder. The streamed path
-IS wired end to end (browser → Chat Service → AI Service). The reason is in §16c — closing the
-blocking path properly needs a service credential rather than relaying the user's own token, and
-that is a decision, not a detail.
+`DisabledChatGenerationPort`, so that route creates a `PENDING` placeholder. The **streamed** path
+is wired end to end (browser → Chat Service → AI Service → Spring AI → provider) and now persists
+the reply, so a reload shows the same text and memory can carry assistant turns. The reason the
+blocking path is still off is in §16c: closing it properly needs a service credential rather than
+relaying the user's own token, and that is a decision, not a detail.
+
+**Verified for conversation memory:** context selection bounded by a token budget over the whole
+prompt; the turn being answered is always last; a four-times-longer conversation does not produce a
+bigger context; summarisation compresses the oldest turns, folds in the previous summary, and leads
+the context labelled as a summary; a summariser that returns nothing or throws stores nothing and
+does not block the reply; clearing removes the summary and leaves every message; memory is keyed by
+conversation so a query without the owner predicate still cannot cross conversations; and another
+user's memory route returns a 404 byte-identical to one that does not exist.
 
 **Verified for the frontend:** it compiles, type-checks under `strict`, lints, and builds; the
 theme tokens and Bootstrap variable overrides reach the built CSS; no credential appears in the
 bundle. Routing, shell, auth pages, chat layout, sidebar, conversation list, message components,
 loading/error/empty states, the responsive drawer and the theme foundation are all in place and
 type-checked.
-
-**Not yet wired:** AI generation. The `ChatGenerationPort` seam exists with no implementation, so
-a sent message creates a PENDING placeholder and it stays PENDING � which is the honest state, not
-a fabricated reply and not a false error.
 
 **Not yet wired:** Kafka publishing (auth-service's outbox is written but no broker was available;
 user-service's listener is gated behind `NEXA_USER_EVENT_ENABLED` and has never seen a real
