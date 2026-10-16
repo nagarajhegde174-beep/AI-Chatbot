@@ -1,0 +1,83 @@
+# =====================================================================
+# NexaAI
+#
+# The single most important job of this file is the secrets section below.
+# Everything else is ordinary build noise.
+# =====================================================================
+
+# ---------------------------------------------------------------- build ----
+# Maven
+target/
+*.jar
+*.war
+.mvn/wrapper/maven-wrapper.jar
+
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ------------------------------------------------------------- secrets ----
+# Real values must never be committed. Only .env.example placeholders belong
+# in the repository. See docs/RULES.md section 6.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets/
+secrets.*
+id_rsa
+id_ed25519
+
+# --------------------------------------------------------------- local ----
+# Local infrastructure state
+postgres-data/
+kafka-data/
+redis-data/
+*.log
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+!.vscode/extensions.json
+.settings/
+.project
+.classpath
+.factorypath
+nbproject/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS binaries produced by native builds
+*.exe
+*.dll
+*.so
+*.dylib
+
+# ---------------------------------------------------------------- docs ----
+# Generated API documentation
+site/
+apidocs/
+**/target/site/
+**/target/jacoco/
+
+# NOTE: docs/ itself is deliberately NOT ignored. Documentation is source code.
+# Generated API documentation below is ignored; the hand-written docs are tracked.
+# CI check R13 fails the build if a bare `docs/` line reappears here.

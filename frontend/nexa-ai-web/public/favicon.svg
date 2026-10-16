@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="NexaAI">
+  <rect width="32" height="32" rx="8" fill="#5b4ce0" />
+  <path
+    d="M9 22.5V9.5h2.6l4.3 6.4 4.3-6.4H23v13h-2.6v-8.6l-4.3 6.2h-.2l-4.3-6.2v8.6H9Z"
+    fill="#ffffff"
+  />
+</svg>

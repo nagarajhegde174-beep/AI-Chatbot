@@ -1,0 +1,17 @@
+// =====================================================================
+// Stylesheet entry point.
+//
+// Load order matters:
+//   1. Bootstrap        third-party baseline, unmodified
+//   2. tokens           design tokens (no output on their own)
+//   3. theme            maps Bootstrap's variables onto the tokens
+//   4. app              component styles, may use both
+//
+// Bootstrap is imported as SCSS rather than as prebuilt CSS so its Sass
+// variables can be overridden here. Importing the prebuilt file would leave the
+// kit's own variables in charge and the theme would not apply.
+// =====================================================================
+
+@use 'bootstrap/scss/bootstrap';
+@use 'theme';
+@use 'app';
