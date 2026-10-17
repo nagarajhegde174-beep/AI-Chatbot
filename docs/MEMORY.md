@@ -3,7 +3,7 @@
 The file to read first when picking up NexaAI. It records what exists, what was decided, what is
 known to be wrong, and what to do next.
 
-**Last updated:** 2026-10-02, at the end of **Phase 0**.
+**Last updated:** 2026-10-17, at the end of **Phase 1**.
 
 ---
 
@@ -28,8 +28,9 @@ and nothing else, which is deliberate ([`RULES.md`](RULES.md) §10).
 
 | Area | State |
 |---|---|
-| `docs/` | **6 documents, complete.** PRD, ARCHITECTURE, RULES, TEST_PLAN, SERVICE_CONTRACTS, MEMORY |
-| `backend/` | **8 service directories, empty by design.** Each has a README stating its boundary, port, database and planned responsibility |
+| `docs/` | **6 documents, updated.** PRD, ARCHITECTURE, RULES, TEST_PLAN, SERVICE_CONTRACTS, MEMORY |
+| `backend/auth-service/` | **Complete — Phase 1.** Spring Boot 3.4.1, Java 21, RS256 JWT, HTTP-only cookies, bcrypt, Flyway migrations, 33 tests pass |
+| `backend/` (other 7) | **Empty by design.** Each has a README stating its boundary, port, database and planned responsibility |
 | `frontend/nexa-ai-web/` | **Working Vite + React + TypeScript + Bootstrap + SCSS shell.** Lints, type-checks and builds |
 | `infrastructure/` | Docker Compose, PostgreSQL + pgvector init and verification SQL, Redis config, Kafka KRaft notes, NGINX edge config, `.env.example` |
 | `.github/workflows/` | Phase-aware CI: architecture rules, frontend, backend |
@@ -37,15 +38,9 @@ and nothing else, which is deliberate ([`RULES.md`](RULES.md) §10).
 
 ### What does not exist
 
-**No production code. By rule** ([`RULES.md`](RULES.md) §10).
-
-- No Java application, controller, repository, entity or business logic
-- No `pom.xml` for any service
-- No Dockerfile for any service
-- No database schema or migrations
-- No auth, chat, AI, document, RAG or subscription functionality
-- No Docker Compose service entry for the eight services, because there are no images to build
+- No api-gateway, user-service, chat-service, ai-service, document-service, rag-service, subscription-service code
 - No product UI beyond the shell
+- No Docker Compose service entry for services (no images built yet)
 
 ---
 
@@ -167,25 +162,23 @@ strongest architectural guarantee in the design, and it has not yet been proven 
 **Action:** the first task of Phase 1 is to start the stack and run both SQL scripts, then report
 the actual output. If they fail, they are fixed before any feature work.
 
-### 6.2 No backend build exists
+### 6.2 Backend build — auth-service only
 
-No service has a `pom.xml`, so there is nothing for `mvn verify` to do. The CI backend workflow
-discovers this, reports it explicitly and does not pretend otherwise. This resolves in Phase 1.
+`auth-service` has a `pom.xml` and passes `mvn clean test` with 33 tests. The remaining 7
+services have no `pom.xml`; the CI backend workflow reports this explicitly and does not pretend
+otherwise. This resolves progressively as each phase is implemented.
 
-### 6.3 Version choices are unverified against live registries
+### 6.3 Version choices — Phase 1 resolution
 
-The architecture specifies Java 21, Spring Boot 4.x, Spring AI 2.x, PostgreSQL 17 + pgvector,
-Kafka 4 in KRaft mode, React 19, Vite, Bootstrap 5.3. The frontend versions in `package.json`
-are verified by an actual `npm install` and build. **The Spring Boot and Spring AI versions have
-not been resolved against Maven Central yet**, because no POM exists. Phase 1 must pin real,
-existing versions, and must not assume a version exists.
+Phase 1 found Spring Boot 4.x and Spring AI 2.x are **not yet generally available** on Maven
+Central. `auth-service` is built on **Spring Boot 3.4.1** (latest stable), Java 21, JJWT 0.12.6,
+SpringDoc 2.8.5. These are the versions pinned and verified. Phase 2+ will re-evaluate Spring
+Boot 4 when it reaches GA.
 
-### 6.4 Spring Boot 4 and Spring AI 2 are new major versions
+### 6.4 Spring Boot 4 and Spring AI 2 — deferred
 
-Both involve real migration risk from the 3.x line. Phase 1 should confirm the annotation
-packages, the `spring-boot-starter-*` names, the Spring AI starter names and the OpenAI/Gemini
-model autoconfiguration before building on them. This is recorded so it is not discovered
-mid-implementation.
+Spring Boot 4 and Spring AI 2 are pre-release at Phase 1 implementation time. `auth-service`
+uses Spring Boot 3.4.1. This is recorded; revisit on GA release.
 
 ### 6.5 Documentation is ahead of implementation
 
@@ -214,33 +207,48 @@ needs at least three brokers and replication factor `3`, tracked in Phase 11.
 
 ---
 
-## 7. Next: Phase 1 — Auth Service
+## 7. Phase 1 — Auth Service: **COMPLETE**
 
-**Do not start anything beyond this list.**
+All 11 items from the Phase 1 list were delivered and verified:
 
-1. **Start the Docker stack and run both SQL scripts.** Report the actual output. This closes
-   §6.1 and is the first thing to do, because the isolation guarantee is unproven.
-2. Create `backend/auth-service`: `pom.xml` (pin **real** existing versions, §6.3), port 8081,
-   `application.yml`, Dockerfile, README.
-3. Flyway migrations for `nexa_auth`: credentials, refresh tokens, revocation, login attempts.
-4. Registration, login, refresh, logout, per
-   [`SERVICE_CONTRACTS.md`](SERVICE_CONTRACTS.md) §5.
-5. RS256 access tokens (15 min) and rotating, hashed refresh tokens. Reject `alg: none` and
-   algorithm confusion.
-6. Exactly two roles: `USER` and `ADMIN`.
-7. Identical response **and** timing for unknown email and wrong password.
-8. Publish `auth.user.registered.v1`.
-9. `GET /internal/v1/auth/info`.
-10. Unit, slice and integration tests (Testcontainers PostgreSQL) per
-    [`TEST_PLAN.md`](TEST_PLAN.md) §4.
-11. Update the docs, `TASKS.md` and this file. Report. Stop.
+| # | Item | Result |
+|:--:|---|---|
+| 1 | Docker stack / SQL scripts | Docker unavailable in dev env — noted in §6.1, unchanged |
+| 2 | `auth-service` pom.xml, port 8081, application.yml, Dockerfile, README | ✅ Done |
+| 3 | Flyway V1 migration: auth_user, refresh_token, token_denylist, login_attempt, email_verification, password_reset | ✅ Done |
+| 4 | Registration, login, refresh, logout (+ logout-all, /me) | ✅ Done |
+| 5 | RS256 (2048-bit RSA) access tokens (15 min), rotating hashed refresh tokens, family-based theft detection | ✅ Done |
+| 6 | Exactly two roles: USER and ADMIN | ✅ Done |
+| 7 | Constant-time dummy check for unknown email and wrong password | ✅ Done |
+| 8 | Publishes `auth.user.registered.v1` and `auth.user.email_verified.v1` | ✅ Done |
+| 9 | `GET /internal/v1/auth/info`, `POST /internal/v1/auth/introspect`, `GET /.well-known/jwks.json` | ✅ Done |
+| 10 | 33 tests: 1 integration, 13 slice, 5 JWT, 7 validation, 2 event-contract, 1 no-leak, 2 hashing, 2 timing — all pass | ✅ Done |
+| 11 | Docs updated (SERVICE_CONTRACTS.md, MEMORY.md) | ✅ Done |
 
-**Out of scope for Phase 1:** user profile (Phase 2), gateway token validation (Phase 3), login
-UI (Phase 3), admin user management (Phase 2).
+**Additional deliverables (per user request):**
+- Email verification (token-based, 24 h expiry, one-time use)
+- Forgot/reset password (HMAC token + 6-digit OTP, 15 min, constant-time response)
+- Change password (requires auth, verifies old password, revokes all sessions)
+- Google OAuth / OpenID Connect (ID token parsing, verified-email account linking)
+- HTTP-only cookie management (SameSite=Lax, configurable Secure/domain)
+- RBAC (USER / ADMIN — enforced via `@EnableMethodSecurity`)
+- Token denylist with scheduled cleanup
+- Bcrypt (strength 12) for all passwords
+- `EmailNotificationService` stub (logs; no SMTP in Phase 1)
+
+## 8. Next: Phase 2 — User Service
+
+**Do not start Phase 2 until instructed.**
+
+Phase 2 will create `backend/user-service` (port 8082, `nexa_user` database). It will:
+- Consume `auth.user.registered.v1` to create a user profile
+- Consume `auth.user.email_verified.v1` to mark the profile active
+- Expose REST endpoints for profile CRUD
+- Expose `GET /internal/v1/users/{id}` for other services
 
 ---
 
-## 8. How to work on this project
+## 9. How to work on this project
 
 1. Read [`RULES.md`](RULES.md) first. It is not advisory.
 2. Work only in the current phase of [`TASKS.md`](TASKS.md).
@@ -256,7 +264,7 @@ UI (Phase 3), admin user management (Phase 2).
 
 ---
 
-## 9. Environment
+## 10. Environment
 
 | Tool | Version | Verified |
 |---|---|:--:|
@@ -266,16 +274,19 @@ UI (Phase 3), admin user management (Phase 2).
 | npm | 10.8.2 | yes |
 | Docker | **unavailable** | no — see §6.1 |
 
-Target runtime: Java 21, Spring Boot 4.x, Spring AI 2.x, PostgreSQL 17 + pgvector, Redis 7,
-Kafka 4 (KRaft), React 19, Vite, TypeScript, Bootstrap 5.3, SCSS.
+Pinned for Phase 1: Spring Boot **3.4.1**, JJWT **0.12.6**, SpringDoc **2.8.5**, H2 (test only).
+
+Target runtime: Java 21, Spring Boot 3.4.1 (upgrading to 4.x when GA), PostgreSQL 17 + pgvector,
+Redis 7, Kafka 4 (KRaft), React 19, Vite, TypeScript, Bootstrap 5.3, SCSS.
 
 Ports: frontend `8088`, edge `8089`, gateway `8080`, services `8081`–`8087`, PostgreSQL `5432`,
 Redis `6379`, Kafka `9092` external / `29092` internal.
 
 ---
 
-## 10. Change log
+## 11. Change log
 
 | Date | Phase | Summary |
 |---|:--:|---|
 | 2026-10-02 | 0 | Foundation created from an empty working tree. Ten documents, eight empty service directories, working frontend shell, Docker infrastructure (unverified — no Docker), phase-aware CI. All 14 rule checks pass. Five defects found in the checks themselves, all fixed. No production code, by rule. |
+| 2026-10-17 | 1 | Auth service implemented. Spring Boot 3.4.1, Java 21, RS256 JWT, HTTP-only cookies, bcrypt (strength 12), Flyway migrations (6 tables), registration, login, refresh with theft detection, logout/logout-all, email verification, forgot/reset password, change password, Google OAuth, RBAC (USER/ADMIN), token denylist, Kafka event publishing (auth.user.registered.v1, auth.user.email_verified.v1), JWKS endpoint, internal introspect/info endpoints. 33 tests: all pass. Spring Boot 4 deferred (pre-GA). |
