@@ -2,9 +2,9 @@
 
 The explicit, versioned agreements between NexaAI services.
 
-**Status: specified, not implemented.** Every contract here is a commitment that Phase 1 and
-later must honour. A change to any contract in this document updates this document in the same
-change ([`RULES.md`](RULES.md) §12).
+**Status: auth-service (§5) implemented and tested — Phase 1 complete.** All other services are
+specified only. Every contract here is a commitment that must be honoured. A change to any
+contract in this document updates this document in the same change ([`RULES.md`](RULES.md) §12).
 
 Related: [`ARCHITECTURE.md`](ARCHITECTURE.md) for the system,
 [`DECISIONS.md`](DECISIONS.md) for why the boundaries are where they are.
