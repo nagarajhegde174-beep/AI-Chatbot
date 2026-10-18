@@ -1,12 +1,10 @@
-# user-service — NOT IMPLEMENTED
+# user-service — User Profile & Preferences Service
 
-**Status: planned. This directory contains no code.**
+**Status: Implemented (Phase 2).**
 
-Phase 0 creates the service boundaries. `user-service` is implemented in **Phase 2**
-([`../../docs/MEMORY.md`](../../docs/MEMORY.md)).
+Independent Spring Boot application providing user profile CRUD, preference management,
+account status management, admin user administration, and boundary services for subscription/usage.
 
-Nothing here is a placeholder controller or a stub
-([`../../docs/RULES.md`](../../docs/RULES.md) §10).
 
 ---
 

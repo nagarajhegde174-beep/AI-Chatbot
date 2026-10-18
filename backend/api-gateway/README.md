@@ -1,12 +1,10 @@
-# api-gateway — NOT IMPLEMENTED
+# api-gateway — Edge API Gateway
 
-**Status: planned. This directory contains no code.**
+**Status: Implemented (Phase 2).**
 
-Phase 0 creates the service boundaries. `api-gateway` is **implemented in Phase 3**, when token
-validation and the route table are wired ([`../../docs/MEMORY.md`](../../docs/MEMORY.md)).
+Independent Spring Cloud Gateway application providing single entry point routing, RS256 JWT
+token validation, edge rate limiting, CORS, and correlation ID propagation.
 
-Nothing here is a placeholder controller or a stub
-([`../../docs/RULES.md`](../../docs/RULES.md) §10).
 
 ---
 

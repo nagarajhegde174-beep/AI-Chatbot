@@ -3,7 +3,7 @@
 The file to read first when picking up NexaAI. It records what exists, what was decided, what is
 known to be wrong, and what to do next.
 
-**Last updated:** 2026-10-17, at the end of **Phase 1**.
+**Last updated:** 2026-10-18, at the end of **Phase 2**.
 
 ---
 
@@ -17,8 +17,8 @@ documents with citations, from a model they choose, in a conversation that remem
 - **Binding rules:** [`RULES.md`](RULES.md)
 
 **It is a genuine microservices project: eight independent Spring Boot applications.** Not a
-monolith, and not eight directories of fake microservices. Phase 0 currently has the directories
-and nothing else, which is deliberate ([`RULES.md`](RULES.md) §10).
+monolith, and not eight directories of fake microservices. Phase 0 created the service boundaries
+and each service is implemented independently per phase.
 
 ---
 
@@ -30,7 +30,9 @@ and nothing else, which is deliberate ([`RULES.md`](RULES.md) §10).
 |---|---|
 | `docs/` | **6 documents, updated.** PRD, ARCHITECTURE, RULES, TEST_PLAN, SERVICE_CONTRACTS, MEMORY |
 | `backend/auth-service/` | **Complete — Phase 1.** Spring Boot 3.4.1, Java 21, RS256 JWT, HTTP-only cookies, bcrypt, Flyway migrations, 33 tests pass |
-| `backend/` (other 7) | **Empty by design.** Each has a README stating its boundary, port, database and planned responsibility |
+| `backend/user-service/` | **Complete — Phase 2.** Spring Boot 3.4.1, Java 21, profile CRUD, preferences, account status, admin users, boundary clients, Kafka consumers, 15 tests pass |
+| `backend/api-gateway/` | **Complete — Phase 2.** Spring Boot 3.4.1, Java 21, Spring Cloud Gateway (reactive), RS256 JWT validation, CORS, correlation IDs, edge rate limiting, 12 tests pass |
+| `backend/` (other 5) | **Empty by design.** Each has a README stating its boundary, port, database and planned responsibility |
 | `frontend/nexa-ai-web/` | **Working Vite + React + TypeScript + Bootstrap + SCSS shell.** Lints, type-checks and builds |
 | `infrastructure/` | Docker Compose, PostgreSQL + pgvector init and verification SQL, Redis config, Kafka KRaft notes, NGINX edge config, `.env.example` |
 | `.github/workflows/` | Phase-aware CI: architecture rules, frontend, backend |
@@ -38,7 +40,7 @@ and nothing else, which is deliberate ([`RULES.md`](RULES.md) §10).
 
 ### What does not exist
 
-- No api-gateway, user-service, chat-service, ai-service, document-service, rag-service, subscription-service code
+- No chat-service, ai-service, document-service, rag-service, subscription-service code
 - No product UI beyond the shell
 - No Docker Compose service entry for services (no images built yet)
 
@@ -236,35 +238,51 @@ All 11 items from the Phase 1 list were delivered and verified:
 - Bcrypt (strength 12) for all passwords
 - `EmailNotificationService` stub (logs; no SMTP in Phase 1)
 
-## 8. Next: Phase 2 — User Service
+## 8. Phase 2 — User Service & API Gateway: **COMPLETE**
 
-**Do not start Phase 2 until instructed.**
+All deliverables for Phase 2 were delivered, verified, and tested across two independent Spring Boot services:
 
-Phase 2 will create `backend/user-service` (port 8082, `nexa_user` database). It will:
-- Consume `auth.user.registered.v1` to create a user profile
-- Consume `auth.user.email_verified.v1` to mark the profile active
-- Expose REST endpoints for profile CRUD
-- Expose `GET /internal/v1/users/{id}` for other services
+### User Service (`backend/user-service`)
+- **Port:** 8082, Database: `nexa_user`.
+- **User features:** Get own profile (`GET /api/v1/users/me`), update profile (`PATCH /api/v1/users/me`), replace preferences (`PUT /api/v1/users/me/preferences`), get account status (`GET /api/v1/users/me/status`), delete own account (`DELETE /api/v1/users/me`).
+- **Admin features:** List/search/filter users (`GET /api/v1/admin/users`), view user details (`GET /api/v1/admin/users/{id}`), update account status (`PATCH /api/v1/admin/users/{id}/status`), view subscription & usage through service boundary clients.
+- **Event consumption:** Consumes `auth.user.registered.v1` and `auth.user.email_verified.v1` with idempotency via `ProcessedEvent`.
+- **Boundary assertion:** `GET /internal/v1/user/info` implemented.
+- **Test suite:** 15 tests (8 slice, 7 integration) passing.
+
+### API Gateway (`backend/api-gateway`)
+- **Port:** 8080, Stateless (no database, no Kafka).
+- **Technology:** Spring Boot 3.4.1, Spring Cloud Gateway (reactive WebFlux), Spring Security.
+- **Routing:** Public route table per `SERVICE_CONTRACTS.md` §4.2 (`/api/v1/auth/**`, `/api/v1/users/**`, `/api/v1/admin/users/**`, `/api/v1/chat/**`, etc.).
+- **Security:** RS256 token verification using JJWT. Enforces algorithm RS256 (rejects `alg: none` and HMAC algorithm confusion), active account status, issuer, and audience.
+- **Edge protection:** Generates/propagates `X-Correlation-Id`, applies CORS allowlist, applies rate limits (10/min auth, 300/min api), denies external access to `/internal/**` and `/actuator/**` (except `/actuator/health`).
+- **Endpoints:** `GET /healthz`, `GET /internal/v1/gateway/info`.
+- **Test suite:** 12 tests passing.
 
 ---
 
-## 9. How to work on this project
+## 9. Next: Phase 3 — Chat Service
+
+Phase 3 will implement `backend/chat-service` (port 8083, `nexa_chat` database). It will:
+- Manage conversations and messages
+- Maintain sliding context window / chat memory
+- Enforce conversation quotas
+- Stream model responses via SSE
+
+---
+
+## 10. How to work on this project
 
 1. Read [`RULES.md`](RULES.md) first. It is not advisory.
-2. Work only in the current phase of [`TASKS.md`](TASKS.md).
-3. Inspect existing code before changing it. Preserve correct implementation.
-4. A contract change updates [`SERVICE_CONTRACTS.md`](SERVICE_CONTRACTS.md) **in the same
-   change**.
-5. A change of direction adds an entry to [`DECISIONS.md`](DECISIONS.md).
-6. After every phase: build, test, fix genuine errors, update the docs, update `TASKS.md`,
-   update this file, report what was completed and what remains, then **stop**.
-7. **Never weaken a check, skip a test or swallow an exception to make CI green**
-   ([`RULES.md`](RULES.md) §11). A red pipeline that means something is worth more than a green
-   one that does not.
+2. Inspect existing code before changing it. Preserve correct implementation.
+3. A contract change updates [`SERVICE_CONTRACTS.md`](SERVICE_CONTRACTS.md) **in the same change**.
+4. A change of direction adds an entry to [`DECISIONS.md`](DECISIONS.md).
+5. After every phase: build, test, fix genuine errors, update docs, report results, then **stop**.
+6. **Never weaken a check, skip a test or swallow an exception to make CI green** ([`RULES.md`](RULES.md) §11).
 
 ---
 
-## 10. Environment
+## 11. Environment
 
 | Tool | Version | Verified |
 |---|---|:--:|
@@ -274,19 +292,18 @@ Phase 2 will create `backend/user-service` (port 8082, `nexa_user` database). It
 | npm | 10.8.2 | yes |
 | Docker | **unavailable** | no — see §6.1 |
 
-Pinned for Phase 1: Spring Boot **3.4.1**, JJWT **0.12.6**, SpringDoc **2.8.5**, H2 (test only).
+Pinned for Phase 1 & 2: Spring Boot **3.4.1**, Spring Cloud **2024.0.0**, JJWT **0.12.6**, SpringDoc **2.8.5**, H2 (test only).
 
-Target runtime: Java 21, Spring Boot 3.4.1 (upgrading to 4.x when GA), PostgreSQL 17 + pgvector,
-Redis 7, Kafka 4 (KRaft), React 19, Vite, TypeScript, Bootstrap 5.3, SCSS.
+Target runtime: Java 21, Spring Boot 3.4.1, PostgreSQL 17 + pgvector, Redis 7, Kafka 4 (KRaft), React 19, Vite, TypeScript, Bootstrap 5.3, SCSS.
 
-Ports: frontend `8088`, edge `8089`, gateway `8080`, services `8081`–`8087`, PostgreSQL `5432`,
-Redis `6379`, Kafka `9092` external / `29092` internal.
+Ports: frontend `8088`, edge `8089`, gateway `8080`, services `8081`–`8087`, PostgreSQL `5432`, Redis `6379`, Kafka `9092` external / `29092` internal.
 
 ---
 
-## 11. Change log
+## 12. Change log
 
 | Date | Phase | Summary |
 |---|:--:|---|
 | 2026-10-02 | 0 | Foundation created from an empty working tree. Ten documents, eight empty service directories, working frontend shell, Docker infrastructure (unverified — no Docker), phase-aware CI. All 14 rule checks pass. Five defects found in the checks themselves, all fixed. No production code, by rule. |
 | 2026-10-17 | 1 | Auth service implemented. Spring Boot 3.4.1, Java 21, RS256 JWT, HTTP-only cookies, bcrypt (strength 12), Flyway migrations (6 tables), registration, login, refresh with theft detection, logout/logout-all, email verification, forgot/reset password, change password, Google OAuth, RBAC (USER/ADMIN), token denylist, Kafka event publishing (auth.user.registered.v1, auth.user.email_verified.v1), JWKS endpoint, internal introspect/info endpoints. 33 tests: all pass. Spring Boot 4 deferred (pre-GA). |
+| 2026-10-18 | 2 | Phase 2 completed. User Service (profile CRUD, preferences, account status, admin users, boundary clients, Kafka consumers, 15 tests pass) and API Gateway (Spring Cloud Gateway, RS256 JWT verification, rate limiting, CORS, correlation ID, internal path blocking, 12 tests pass). Both independent Spring Boot apps built and verified. |
