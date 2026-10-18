@@ -1,0 +1,91 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: auth-service
+          uri: ${services.auth-url:http://localhost:8081}
+          predicates:
+            - Path=/api/v1/auth/**
+        - id: user-service-admin
+          uri: ${services.user-url:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/admin/users/**
+        - id: user-service
+          uri: ${services.user-url:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/users/**
+        - id: chat-service
+          uri: ${services.chat-url:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/chat/**
+        - id: ai-service
+          uri: ${services.ai-url:http://localhost:8084}
+          predicates:
+            - Path=/api/v1/models/**
+        - id: document-service
+          uri: ${services.document-url:http://localhost:8085}
+          predicates:
+            - Path=/api/v1/documents/**
+        - id: rag-service
+          uri: ${services.rag-url:http://localhost:8086}
+          predicates:
+            - Path=/api/v1/rag/**
+        - id: subscription-service-sub
+          uri: ${services.subscription-url:http://localhost:8087}
+          predicates:
+            - Path=/api/v1/subscriptions/**
+        - id: subscription-service-plans
+          uri: ${services.subscription-url:http://localhost:8087}
+          predicates:
+            - Path=/api/v1/plans/**
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:5173"
+              - "http://localhost:8088"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+
+services:
+  auth-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+  user-url: ${USER_SERVICE_URL:http://localhost:8082}
+  chat-url: ${CHAT_SERVICE_URL:http://localhost:8083}
+  ai-url: ${AI_SERVICE_URL:http://localhost:8084}
+  document-url: ${DOCUMENT_SERVICE_URL:http://localhost:8085}
+  rag-url: ${RAG_SERVICE_URL:http://localhost:8086}
+  subscription-url: ${SUBSCRIPTION_SERVICE_URL:http://localhost:8087}
+
+jwt:
+  verifier:
+    public-key: ${JWT_PUBLIC_KEY:}
+    issuer: ${JWT_ISSUER:nexa-auth-service}
+    audience: ${JWT_AUDIENCE:nexaai-web}
+
+rate-limit:
+  enabled: true
+  auth-requests-per-minute: 10
+  api-requests-per-minute: 300
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
