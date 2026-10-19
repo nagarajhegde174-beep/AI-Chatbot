@@ -472,14 +472,23 @@ Port 8083. Owns `nexa_chat`. Orchestrates a chat turn.
 | Method | Path | Auth | Purpose |
 |---|---|:--:|---|
 | GET | `/api/v1/chat/conversations` | bearer | List own conversations |
-| POST | `/api/v1/chat/conversations` | bearer | Create |
-| GET | `/api/v1/chat/conversations/{id}` | bearer | One, with ownership check |
-| PATCH | `/api/v1/chat/conversations/{id}` | bearer | Rename, change model |
-| DELETE | `/api/v1/chat/conversations/{id}` | bearer | Delete |
-| GET | `/api/v1/chat/conversations/{id}/messages` | bearer | History, paginated |
-| POST | `/api/v1/chat/conversations/{id}/messages` | bearer | Send a message, **SSE** |
-| POST | `/api/v1/chat/conversations/{id}/messages/{messageId}/regenerate` | bearer | Regenerate |
+| POST | `/api/v1/chat/conversations` | bearer | Create conversation |
+| GET | `/api/v1/chat/conversations/search` | bearer | Search conversations and message content |
+| GET | `/api/v1/chat/conversations/{id}` | bearer | One conversation, with ownership check |
+| PATCH | `/api/v1/chat/conversations/{id}` | bearer | Rename, change model or preferences |
+| DELETE | `/api/v1/chat/conversations/{id}` | bearer | Delete conversation |
+| POST | `/api/v1/chat/conversations/{id}/archive` | bearer | Archive conversation |
+| POST | `/api/v1/chat/conversations/{id}/unarchive` | bearer | Unarchive conversation |
+| GET | `/api/v1/chat/conversations/{id}/export` | bearer | Export foundation (json, markdown, text) |
+| GET | `/api/v1/chat/conversations/{id}/messages` | bearer | History, ordered by sequence |
+| POST | `/api/v1/chat/conversations/{id}/messages` | bearer | Send message, store AI response placeholder |
+| POST | `/api/v1/chat/conversations/{id}/messages/{messageId}/regenerate` | bearer | Regenerate response foundation |
+| POST | `/api/v1/chat/conversations/{id}/messages/{messageId}/edit` | bearer | Edit and resend user message foundation |
+| POST | `/api/v1/chat/conversations/{id}/messages/{messageId}/feedback` | bearer | Submit message feedback (thumbs up/down) |
 | DELETE | `/api/v1/chat/conversations/{id}/messages/{messageId}` | bearer | Delete a message |
+| GET | `/api/v1/admin/chat/conversations` | ADMIN | Admin list conversations |
+| GET | `/api/v1/admin/chat/conversations/{id}` | ADMIN | Admin inspect conversation |
+| GET | `/internal/v1/chat/info` | none | Boundary health and capabilities assertion |
 
 ### 7.2 Streaming contract
 
