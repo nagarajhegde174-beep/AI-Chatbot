@@ -3,9 +3,11 @@ import { Download, Menu, Sparkles, Trash2 } from 'lucide-react'
 import { Sidebar } from './Sidebar.tsx'
 import { MessageItem } from './MessageItem.tsx'
 import { MessageInput } from './MessageInput.tsx'
+import { ModelSelector } from './ModelSelector.tsx'
 import { LoadingSpinner } from '../common/LoadingSpinner.tsx'
 import { ErrorBanner } from '../common/ErrorBanner.tsx'
 import { chatService } from '../../services/chatService.ts'
+import { streamMessage } from '../../services/aiService.ts'
 import type { Conversation, FeedbackType, Message } from '../../types/index.ts'
 
 export function ChatLayout() {
@@ -17,6 +19,9 @@ export function ChatLayout() {
   const [error, setError] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [selectedModel, setSelectedModel] = useState<string>('gpt-4o-mini')
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamController, setStreamController] = useState<AbortController | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -135,56 +140,147 @@ export function ChatLayout() {
     }
   }
 
+  useEffect(() => {
+    if (activeId) {
+      const active = conversations.find((c) => c.id === activeId)
+      if (active?.model) {
+        setSelectedModel(active.model)
+      }
+    }
+  }, [activeId, conversations])
+
+  const handleStopGeneration = () => {
+    if (streamController) {
+      streamController.abort()
+      setStreamController(null)
+    }
+    setIsStreaming(false)
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.status === 'IN_PROGRESS'
+          ? { ...m, status: m.content ? 'COMPLETED' : 'INCOMPLETE' }
+          : m
+      )
+    )
+  }
+
   const handleSendMessage = async (content: string) => {
-    if (!activeId) {
+    let convId = activeId
+    if (!convId) {
       try {
         const newConv = await chatService.createConversation(
           content.slice(0, 30) || 'New Conversation',
-          'gpt-4o-mini'
+          selectedModel
         )
         setConversations((prev) => [newConv, ...prev])
         setActiveId(newConv.id)
-
-        const assistantMsg = await chatService.sendMessage(newConv.id, content)
-        const userMsg: Message = {
-          id: 'temp-' + Date.now(),
-          conversationId: newConv.id,
-          userId: newConv.userId,
-          role: 'USER',
-          content,
-          status: 'COMPLETED',
-          sequenceNumber: 1,
-          isRegenerated: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-        setMessages([userMsg, assistantMsg])
-        setTimeout(scrollToBottom, 50)
+        convId = newConv.id
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to send message.')
+        setError(err instanceof Error ? err.message : 'Failed to create conversation.')
+        return
       }
-      return
     }
 
-    try {
-      const assistantMsg = await chatService.sendMessage(activeId, content)
-      const userMsg: Message = {
-        id: 'temp-' + Date.now(),
-        conversationId: activeId,
-        userId: assistantMsg.userId,
-        role: 'USER',
-        content,
-        status: 'COMPLETED',
-        sequenceNumber: assistantMsg.sequenceNumber - 1,
-        isRegenerated: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, userMsg, assistantMsg])
-      setTimeout(scrollToBottom, 50)
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to send message.')
+    const userMsgId = 'user-' + Date.now()
+    const assistantMsgId = 'assistant-' + Date.now()
+    const userMsg: Message = {
+      id: userMsgId,
+      conversationId: convId,
+      userId: 'current-user',
+      role: 'USER',
+      content,
+      status: 'COMPLETED',
+      sequenceNumber: (messages.length || 0) + 1,
+      isRegenerated: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }
+    const assistantPlaceholder: Message = {
+      id: assistantMsgId,
+      conversationId: convId,
+      userId: 'nexa-assistant',
+      role: 'ASSISTANT',
+      content: '',
+      model: selectedModel,
+      status: 'IN_PROGRESS',
+      sequenceNumber: (messages.length || 0) + 2,
+      isRegenerated: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+
+    setMessages((prev) => [...prev, userMsg, assistantPlaceholder])
+    setTimeout(scrollToBottom, 50)
+    setIsStreaming(true)
+
+    const ctrl = streamMessage(
+      convId,
+      content,
+      selectedModel,
+      (token) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: m.content + token, status: 'IN_PROGRESS' }
+              : m
+          )
+        )
+        scrollToBottom()
+      },
+      (summary) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? {
+                  ...m,
+                  content: summary.content || m.content,
+                  status: 'COMPLETED',
+                  totalTokens: summary.usage?.totalTokens,
+                  promptTokens: summary.usage?.promptTokens,
+                  completionTokens: summary.usage?.completionTokens,
+                }
+              : m
+          )
+        )
+        setIsStreaming(false)
+        setStreamController(null)
+        setTimeout(scrollToBottom, 50)
+      },
+      async (streamErr) => {
+        // Fallback to standard chatService if SSE stream endpoint is not available
+        try {
+          const resp = await chatService.sendMessage(convId, content)
+          setMessages((prev) =>
+            prev.map((m) => (m.id === assistantMsgId ? resp : m))
+          )
+        } catch (fallbackErr: unknown) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, status: 'FAILED' } : m
+            )
+          )
+          setError(streamErr || (fallbackErr instanceof Error ? fallbackErr.message : 'Message failed.'))
+        } finally {
+          setIsStreaming(false)
+          setStreamController(null)
+        }
+      }
+    )
+    setStreamController(ctrl)
+  }
+
+  const handleRetry = async (messageId: string) => {
+    if (isStreaming) return
+    const index = messages.findIndex((m) => m.id === messageId)
+    if (index > 0) {
+      const prevUserMsg = messages[index - 1]
+      if (prevUserMsg && prevUserMsg.role === 'USER') {
+        setMessages((prev) => prev.filter((m) => m.id !== messageId))
+        await handleSendMessage(prevUserMsg.content)
+        return
+      }
+    }
+    await handleRegenerate(messageId)
   }
 
   const handleRegenerate = async (messageId: string) => {
@@ -323,48 +419,56 @@ export function ChatLayout() {
             </div>
           </div>
 
-          {activeConversation && (
-            <div className="d-flex align-items-center gap-1">
-              <div className="dropdown">
+          <div className="d-flex align-items-center gap-2">
+            <ModelSelector
+              currentModel={selectedModel}
+              onSelectModel={(m) => setSelectedModel(m)}
+              disabled={isStreaming}
+            />
+
+            {activeConversation && (
+              <div className="d-flex align-items-center gap-1">
+                <div className="dropdown">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-1"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                    title="Export conversation"
+                  >
+                    <Download size={14} />
+                    <span className="d-none d-sm-inline">Export</span>
+                  </button>
+                  <ul className="dropdown-menu dropdown-menu-end shadow-sm">
+                    <li>
+                      <button className="dropdown-item small" onClick={() => void handleExport('markdown')}>
+                        Export as Markdown (.md)
+                      </button>
+                    </li>
+                    <li>
+                      <button className="dropdown-item small" onClick={() => void handleExport('json')}>
+                        Export as JSON (.json)
+                      </button>
+                    </li>
+                    <li>
+                      <button className="dropdown-item small" onClick={() => void handleExport('text')}>
+                        Export as Plain Text (.txt)
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+
                 <button
                   type="button"
-                  className="btn btn-sm btn-outline-secondary dropdown-toggle d-flex align-items-center gap-1"
-                  data-bs-toggle="dropdown"
-                  aria-expanded="false"
-                  title="Export conversation"
+                  className="btn btn-sm btn-outline-danger p-1 ms-1"
+                  onClick={() => void handleDelete(activeConversation.id)}
+                  title="Delete conversation"
                 >
-                  <Download size={14} />
-                  <span className="d-none d-sm-inline">Export</span>
+                  <Trash2 size={16} />
                 </button>
-                <ul className="dropdown-menu dropdown-menu-end shadow-sm">
-                  <li>
-                    <button className="dropdown-item small" onClick={() => void handleExport('markdown')}>
-                      Export as Markdown (.md)
-                    </button>
-                  </li>
-                  <li>
-                    <button className="dropdown-item small" onClick={() => void handleExport('json')}>
-                      Export as JSON (.json)
-                    </button>
-                  </li>
-                  <li>
-                    <button className="dropdown-item small" onClick={() => void handleExport('text')}>
-                      Export as Plain Text (.txt)
-                    </button>
-                  </li>
-                </ul>
               </div>
-
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-danger p-1 ms-1"
-                onClick={() => void handleDelete(activeConversation.id)}
-                title="Delete conversation"
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Error notification banner */}
@@ -385,7 +489,7 @@ export function ChatLayout() {
               </div>
               <h3 className="fs-5 fw-bold mb-1 text-body">Start a new conversation</h3>
               <p className="small mb-3" style={{ maxWidth: '420px' }}>
-                Type your message below. Phase 3 provides full session management, message storage, turn regeneration, and feedback foundation.
+                Select a model from the top bar and ask anything. Spring AI Model Router provides multi-provider fallback and streaming token rendering.
               </p>
               <div className="d-flex flex-wrap gap-2 justify-content-center">
                 <button
@@ -412,6 +516,7 @@ export function ChatLayout() {
                 key={m.id}
                 message={m}
                 onRegenerate={handleRegenerate}
+                onRetry={handleRetry}
                 onEdit={handleEdit}
                 onFeedback={handleFeedback}
               />
@@ -420,7 +525,12 @@ export function ChatLayout() {
         </div>
 
         {/* Bottom Message Input */}
-        <MessageInput onSend={handleSendMessage} />
+        <MessageInput
+          onSend={handleSendMessage}
+          disabled={loadingMessages}
+          isStreaming={isStreaming}
+          onStop={handleStopGeneration}
+        />
       </main>
     </div>
   )

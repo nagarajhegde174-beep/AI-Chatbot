@@ -15,6 +15,8 @@ import 'bootstrap/js/dist/modal'
 import 'bootstrap/js/dist/offcanvas'
 import 'bootstrap/js/dist/tooltip'
 
+import 'highlight.js/styles/github-dark.css'
+
 import './styles/main.scss'
 
 import { StrictMode } from 'react'
