@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: ai-service-test
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+
+  ai:
+    openai:
+      api-key: test-disabled-key
+
+  kafka:
+    bootstrap-servers: localhost:9999  # unreachable in tests; Kafka is mocked
+
+nexaai:
+  ai:
+    default-provider: OPENAI
+    default-model: gpt-4o-mini
+
+    openai:
+      enabled: false          # all providers disabled in tests; ChatModel is mocked
+      api-key: test-key
+      models:
+        - id: gpt-4o-mini
+          display-name: GPT-4o Mini
+          max-context-tokens: 128000
+          max-output-tokens: 16384
+          supports-temperature: true
+
+    gemini:
+      enabled: false
+      api-key: test-key
+      models:
+        - id: gemini-2.0-flash
+          display-name: Gemini 2.0 Flash
+          max-context-tokens: 1048576
+          max-output-tokens: 8192
+          supports-temperature: true
+
+    groq:
+      enabled: false
+      api-key: test-key
+      models:
+        - id: llama-3.3-70b-versatile
+          display-name: LLaMA 3.3 70B
+          max-context-tokens: 128000
+          max-output-tokens: 32768
+          supports-temperature: true
+
+    retry:
+      max-attempts: 2
+      initial-backoff-ms: 10
+      max-backoff-ms: 50
+      multiplier: 1.5
+
+    circuit-breaker:
+      failure-threshold: 3
+      wait-duration-ms: 100
+      success-threshold: 1

@@ -1,0 +1,120 @@
+spring:
+  application:
+    name: ai-service
+
+  # ── No datasource, no JPA, no Flyway ──────────────────────────────────────
+  # AI Service is stateless by design (ADR-007). Any attempt to add a
+  # datasource will be caught by CI rule R3.2.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+
+  # ── Spring AI auto-configuration opt-out ─────────────────────────────────
+  # We configure ChatModel beans manually in AiClientConfig to support three
+  # providers with different base-urls from a single pom dependency.
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:disabled}
+      # base-url is handled in AiClientConfig via nexaai.ai.openai.base-url
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+server:
+  port: 8084
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+# ── AI provider configuration ──────────────────────────────────────────────
+nexaai:
+  ai:
+    default-provider: OPENAI
+    default-model: gpt-4o-mini
+
+    openai:
+      enabled: ${OPENAI_ENABLED:true}
+      api-key: ${OPENAI_API_KEY:}
+      base-url:   # defaults to https://api.openai.com/v1 in AiClientConfig
+      models:
+        - id: gpt-4o-mini
+          display-name: GPT-4o Mini
+          max-context-tokens: 128000
+          max-output-tokens: 16384
+          supports-temperature: true
+        - id: gpt-4o
+          display-name: GPT-4o
+          max-context-tokens: 128000
+          max-output-tokens: 16384
+          supports-temperature: true
+        - id: gpt-4-turbo
+          display-name: GPT-4 Turbo
+          max-context-tokens: 128000
+          max-output-tokens: 4096
+          supports-temperature: true
+
+    gemini:
+      enabled: ${GEMINI_ENABLED:false}
+      api-key: ${GEMINI_API_KEY:}
+      base-url: https://generativelanguage.googleapis.com/v1beta/openai
+      models:
+        - id: gemini-2.0-flash
+          display-name: Gemini 2.0 Flash
+          max-context-tokens: 1048576
+          max-output-tokens: 8192
+          supports-temperature: true
+        - id: gemini-1.5-pro
+          display-name: Gemini 1.5 Pro
+          max-context-tokens: 2097152
+          max-output-tokens: 8192
+          supports-temperature: true
+
+    groq:
+      enabled: ${GROQ_ENABLED:false}
+      api-key: ${GROQ_API_KEY:}
+      base-url: https://api.groq.com/openai/v1
+      models:
+        - id: llama-3.3-70b-versatile
+          display-name: LLaMA 3.3 70B
+          max-context-tokens: 128000
+          max-output-tokens: 32768
+          supports-temperature: true
+        - id: llama-3.1-8b-instant
+          display-name: LLaMA 3.1 8B Instant
+          max-context-tokens: 128000
+          max-output-tokens: 8000
+          supports-temperature: true
+        - id: mixtral-8x7b-32768
+          display-name: Mixtral 8x7B
+          max-context-tokens: 32768
+          max-output-tokens: 32768
+          supports-temperature: true
+
+    retry:
+      max-attempts: 3
+      initial-backoff-ms: 500
+      max-backoff-ms: 5000
+      multiplier: 2.0
+
+    circuit-breaker:
+      failure-threshold: 5
+      wait-duration-ms: 30000
+      success-threshold: 2
+
+logging:
+  level:
+    com.nexaai.ai: INFO
+    org.springframework.ai: WARN
+    # NEVER log at DEBUG in production — prompts and keys can appear there
