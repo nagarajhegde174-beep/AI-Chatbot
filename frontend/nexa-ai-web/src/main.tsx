@@ -15,7 +15,6 @@ import 'bootstrap/js/dist/modal'
 import 'bootstrap/js/dist/offcanvas'
 import 'bootstrap/js/dist/tooltip'
 
-import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github-dark.css'
 
 import './styles/main.scss'
