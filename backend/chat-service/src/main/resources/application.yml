@@ -41,3 +41,18 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+# ── Phase 5: Conversation Memory ──────────────────────────────────────────────
+nexa:
+  # "live"        → calls real AI Service (default when AI Service is running)
+  # "placeholder" → returns stub responses (for local dev without AI Service)
+  ai-client:
+    mode: ${AI_CLIENT_MODE:live}
+
+  memory:
+    # Hard token cap for the full context window sent to the model (excl. new turn)
+    max-context-tokens: ${MEMORY_MAX_CONTEXT_TOKENS:6000}
+    # Number of recent message turns (user+assistant pairs) to always keep verbatim
+    recent-window-size: ${MEMORY_RECENT_WINDOW_SIZE:10}
+    # Un-summarized message count that triggers a compression pass
+    summarization-threshold: ${MEMORY_SUMMARIZATION_THRESHOLD:20}
