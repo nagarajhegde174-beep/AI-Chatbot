@@ -26,17 +26,20 @@ public class ConversationService {
     private final MessageRepository messageRepository;
     private final ConversationModelHistoryRepository modelHistoryRepository;
     private final ObjectMapper objectMapper;
+    private final ContextWindowService contextWindowService;
 
     public ConversationService(
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             ConversationModelHistoryRepository modelHistoryRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            ContextWindowService contextWindowService
     ) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.modelHistoryRepository = modelHistoryRepository;
         this.objectMapper = objectMapper;
+        this.contextWindowService = contextWindowService;
     }
 
     /**
@@ -146,6 +149,16 @@ public class ConversationService {
         conversation.setUpdatedAt(Instant.now());
         Conversation updated = conversationRepository.save(conversation);
         return toConversationResponse(updated);
+    }
+
+    /**
+     * Phase 5 — Clear conversation memory.
+     * Deletes all messages and resets the rolling context summary while
+     * preserving the conversation metadata (title, model, system prompt).
+     */
+    public void clearMemory(UUID conversationId, UUID userId, boolean isAdmin) {
+        Conversation conversation = findAndVerifyAccess(conversationId, userId, isAdmin);
+        contextWindowService.clearMemory(conversation);
     }
 
     /**

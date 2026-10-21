@@ -6,6 +6,8 @@ import com.nexaai.ai.domain.FinishReason;
 import com.nexaai.ai.dto.CompletionRequest;
 import com.nexaai.ai.dto.CompletionResponse;
 import com.nexaai.ai.dto.StreamChunk;
+import com.nexaai.ai.dto.SummarizeRequest;
+import com.nexaai.ai.dto.SummarizeResponse;
 import com.nexaai.ai.exception.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -174,6 +176,65 @@ public class AiInferenceService {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    // ------------------------------------------------------------------ summarize
+
+    /**
+     * Context summarization. Compresses older conversation turns into a dense,
+     * factual context summary for conversation memory window management.
+     */
+    public Mono<SummarizeResponse> summarize(SummarizeRequest req) {
+        String providerStr = req.provider() != null && !req.provider().isBlank()
+                ? req.provider()
+                : props.defaultProvider();
+        AiProvider provider;
+        try {
+            provider = resolveProvider(providerStr);
+            String model = req.model() != null && !req.model().isBlank()
+                    ? req.model()
+                    : props.defaultModel();
+            router.validate(provider, model);
+        } catch (AiException ex) {
+            return Mono.error(ex);
+        }
+
+        final AiProvider finalProvider = provider;
+        String modelName = req.model() != null && !req.model().isBlank()
+                ? req.model()
+                : props.defaultModel();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("You are NexaAI's conversation memory compressor. Create a concise, factual summary of the key context, user requests, decisions, and outcomes in the following conversation turns. Do not include conversational filler. Keep the summary under 150 words.\n\n");
+        if (req.existingSummary() != null && !req.existingSummary().isBlank()) {
+            sb.append("Prior summary of earlier context:\n").append(req.existingSummary().trim()).append("\n\n");
+            sb.append("New dialogue turns to incorporate:\n");
+        } else {
+            sb.append("Dialogue turns to summarize:\n");
+        }
+
+        for (CompletionRequest.CompletionMessage msg : req.messages()) {
+            sb.append(msg.role()).append(": ").append(msg.content()).append("\n");
+        }
+
+        CompletionRequest completionReq = new CompletionRequest(
+                finalProvider.name(),
+                modelName,
+                "You are an expert conversation summarizer.",
+                List.of(new CompletionRequest.CompletionMessage("USER", sb.toString())),
+                0.3,
+                req.maxOutputTokens() != null ? req.maxOutputTokens() : 300,
+                req.requestId()
+        );
+
+        return complete(completionReq)
+                .map(comp -> new SummarizeResponse(
+                        req.requestId(),
+                        comp.provider(),
+                        comp.model(),
+                        comp.content() != null ? comp.content().trim() : "",
+                        comp.usage() != null ? comp.usage().totalTokens() : 0
+                ));
+    }
 
     private AiProvider resolveProvider(String providerStr) {
         try {

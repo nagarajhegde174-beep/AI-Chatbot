@@ -44,6 +44,18 @@ public class Conversation {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    /** Rolling compressed summary of older messages (Phase 5). */
+    @Column(name = "context_summary", columnDefinition = "TEXT")
+    private String contextSummary;
+
+    /**
+     * Highest message sequenceNumber whose content is already captured
+     * in contextSummary. Messages with seq > summaryMessageSeq are the
+     * "recent window" sent verbatim to the model.
+     */
+    @Column(name = "summary_message_seq", nullable = false)
+    private int summaryMessageSeq = 0;
+
     @OneToMany(mappedBy = "conversation", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderBy("sequenceNumber ASC")
     private List<Message> messages = new ArrayList<>();
@@ -154,6 +166,23 @@ public class Conversation {
 
     public void setDeletedAt(Instant deletedAt) {
         this.deletedAt = deletedAt;
+    }
+
+    public String getContextSummary() {
+        return contextSummary;
+    }
+
+    public void setContextSummary(String contextSummary) {
+        this.contextSummary = contextSummary;
+        this.updatedAt = Instant.now();
+    }
+
+    public int getSummaryMessageSeq() {
+        return summaryMessageSeq;
+    }
+
+    public void setSummaryMessageSeq(int summaryMessageSeq) {
+        this.summaryMessageSeq = summaryMessageSeq;
     }
 
     public List<Message> getMessages() {

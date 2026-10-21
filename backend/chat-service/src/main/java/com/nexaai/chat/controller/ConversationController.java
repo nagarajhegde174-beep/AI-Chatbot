@@ -131,4 +131,18 @@ public class ConversationController {
         ConversationExportResponse response = conversationService.exportConversation(id, principal.getUserId(), principal.isAdmin(), format);
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * Phase 5 — Clear conversation memory.
+     * Deletes all messages and resets the rolling context summary.
+     * The conversation itself (title, model, settings) is preserved.
+     */
+    @DeleteMapping("/{id}/memory")
+    public ResponseEntity<Void> clearMemory(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable UUID id
+    ) {
+        conversationService.clearMemory(id, principal.getUserId(), principal.isAdmin());
+        return ResponseEntity.noContent().build();
+    }
 }

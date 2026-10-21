@@ -13,6 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import com.nexaai.ai.dto.SummarizeRequest;
+import com.nexaai.ai.dto.SummarizeResponse;
+
 /**
  * Inference endpoints consumed by Chat Service only.
  * There is NO public route to this service; the gateway and NGINX both block
@@ -20,6 +23,7 @@ import reactor.core.publisher.Mono;
  *
  * POST /internal/v1/ai/completions   — blocking full-response completion
  * POST /internal/v1/ai/stream        — streaming SSE completion
+ * POST /internal/v1/ai/summarize     — context summarization and compression
  */
 @RestController
 @RequestMapping("/internal/v1/ai")
@@ -53,5 +57,13 @@ public class InferenceController {
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<StreamChunk> stream(@Valid @RequestBody CompletionRequest request) {
         return inferenceService.stream(request);
+    }
+
+    /**
+     * Context summarization. Compresses older turns into a concise context summary.
+     */
+    @PostMapping("/summarize")
+    public Mono<SummarizeResponse> summarize(@Valid @RequestBody SummarizeRequest request) {
+        return inferenceService.summarize(request);
     }
 }
