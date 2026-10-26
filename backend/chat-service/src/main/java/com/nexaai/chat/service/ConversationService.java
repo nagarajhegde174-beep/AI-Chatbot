@@ -28,6 +28,12 @@ public class ConversationService {
     private final ObjectMapper objectMapper;
     private final ContextWindowService contextWindowService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ChatEventPublisher eventPublisher;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ChatCacheService cacheService;
+
     public ConversationService(
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
@@ -64,6 +70,12 @@ public class ConversationService {
         }
 
         Conversation saved = conversationRepository.save(conversation);
+        if (eventPublisher != null) {
+            eventPublisher.publishConversationCreated(saved, null);
+        }
+        if (cacheService != null) {
+            cacheService.evictConversations(userId);
+        }
         return toConversationResponse(saved);
     }
 
@@ -72,15 +84,27 @@ public class ConversationService {
      */
     @Transactional(readOnly = true)
     public List<ConversationSummaryResponse> listConversations(UUID userId, Boolean archived) {
+        if (archived == null && cacheService != null) {
+            var cached = cacheService.getConversations(userId);
+            if (cached.isPresent()) {
+                return cached.get();
+            }
+        }
+
         List<Conversation> conversations;
         if (archived != null) {
             conversations = conversationRepository.findByUserIdAndIsArchivedAndDeletedAtIsNullOrderByUpdatedAtDesc(userId, archived);
         } else {
             conversations = conversationRepository.findByUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId);
         }
-        return conversations.stream()
+        List<ConversationSummaryResponse> results = conversations.stream()
                 .map(this::toSummaryResponse)
                 .collect(Collectors.toList());
+
+        if (archived == null && cacheService != null) {
+            cacheService.putConversations(userId, results);
+        }
+        return results;
     }
 
     /**
@@ -128,6 +152,9 @@ public class ConversationService {
 
         conversation.setUpdatedAt(Instant.now());
         Conversation updated = conversationRepository.save(conversation);
+        if (cacheService != null) {
+            cacheService.evictConversations(userId);
+        }
         return toConversationResponse(updated);
     }
 
@@ -138,6 +165,9 @@ public class ConversationService {
         Conversation conversation = findAndVerifyAccess(conversationId, userId, isAdmin);
         conversation.setDeletedAt(Instant.now());
         conversationRepository.save(conversation);
+        if (cacheService != null) {
+            cacheService.evictConversations(userId);
+        }
     }
 
     /**
@@ -148,6 +178,9 @@ public class ConversationService {
         conversation.setArchived(isArchived);
         conversation.setUpdatedAt(Instant.now());
         Conversation updated = conversationRepository.save(conversation);
+        if (cacheService != null) {
+            cacheService.evictConversations(userId);
+        }
         return toConversationResponse(updated);
     }
 
@@ -159,6 +192,9 @@ public class ConversationService {
     public void clearMemory(UUID conversationId, UUID userId, boolean isAdmin) {
         Conversation conversation = findAndVerifyAccess(conversationId, userId, isAdmin);
         contextWindowService.clearMemory(conversation);
+        if (cacheService != null) {
+            cacheService.evictConversations(userId);
+        }
     }
 
     /**

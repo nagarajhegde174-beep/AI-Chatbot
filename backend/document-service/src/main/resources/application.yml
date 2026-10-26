@@ -1,0 +1,58 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: document-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/nexa_document
+    username: ${DB_USER:nexa_document}
+    password: ${DB_PASSWORD:nexa_document_local_pw}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
+
+nexa:
+  storage:
+    path: ${STORAGE_PATH:data/documents}
+  upload:
+    max-file-size-bytes: 26214400 # 25MB
+    allowed-content-types:
+      - application/pdf
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - text/plain
+      - text/markdown
+      - text/csv
+  jwt:
+    issuer: ${JWT_ISSUER:nexa-auth-service}
+    audience: ${JWT_AUDIENCE:nexaai-web}
+    public-key: ${JWT_PUBLIC_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized

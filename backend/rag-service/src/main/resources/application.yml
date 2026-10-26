@@ -1,0 +1,60 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: rag-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/nexa_rag
+    username: ${DB_USER:nexa_rag}
+    password: ${DB_PASSWORD:nexa_rag_local_pw}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: nexa.rag-service.events
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:local-offline-key}
+      embedding:
+        options:
+          model: text-embedding-3-small
+          dimensions: 1536
+
+nexa:
+  rag:
+    default-top-k: 5
+    default-min-score: 0.1
+    embedding-model: text-embedding-3-small
+  jwt:
+    issuer: ${JWT_ISSUER:nexa-auth-service}
+    audience: ${JWT_AUDIENCE:nexaai-web}
+    public-key: ${JWT_PUBLIC_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized

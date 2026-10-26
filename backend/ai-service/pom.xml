@@ -71,6 +71,12 @@
       <artifactId>spring-kafka</artifactId>
     </dependency>
 
+    <!-- Redis for model health cache and usage counters -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
+
     <!-- Configuration annotation processor -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

@@ -681,9 +681,57 @@ Store assistant response in DB
 
 ---
 
-## 12. Next: Phase 6
+## 12. Phase 6 — Infrastructure + Async Foundation
 
-Phase 6 will implement streaming relay from Chat Service to the frontend browser via SSE, and update the frontend to render streaming text, Markdown, code blocks, syntax highlighting, LaTeX, copy-to-clipboard, stop generation, and retry.
+Phase 6 implements the complete infrastructure verification and asynchronous event-driven foundation for NexaAI.
+
+### 12.1 Deliverables
+1. **KRaft Mode Kafka (ZooKeeper Prohibited & Confirmed Absent):**
+   - Single combined controller+broker node configured in `infrastructure/docker-compose.yml`.
+   - Node ID: `1`, Quorum voters: `1@kafka:29093`, Cluster ID: fixed development cluster UUID.
+   - Internal listener `PLAINTEXT://kafka:29092` and host listener `EXTERNAL://localhost:9092`.
+   - Verification confirmed: zero occurrences of `zookeeper` in any active configuration, build file, or source code.
+   - Automated topic provisioning script added: `infrastructure/docker/kafka/create-topics.sh` covering 19 topics and DLTs.
+
+2. **Redis Ephemeral Cache Foundation:**
+   - Redis 7 configured with persistence strictly disabled (`save ""` and `appendonly no`).
+   - Sized at `maxmemory 512mb` with `maxmemory-policy allkeys-lru`.
+   - Redis MUST NOT replace PostgreSQL: losing every Redis key degrades performance, never correctness.
+   - `auth-service`: `RedisConfig`, `RedisRateLimiterService` (rate-limiting foundation with sliding window counters), `RedisOtpStateService` (temporary OTP/verification token state with 15-minute TTL).
+   - `user-service`: `RedisConfig`, `UserProfileCacheService` (frequently accessed user profile cache with 10-minute TTL, evictions on mutations).
+   - `chat-service`: `RedisConfig`, `ChatCacheService` (cached conversation summary lists, active state).
+   - `ai-service`: `RedisConfig`, `ModelAvailabilityCache` (30s TTL cache on provider availability), `UsageCounterService` (atomic token usage counters per user/model/day).
+   - All services configured with `@ConditionalOnBean(RedisConnectionFactory.class)` and fail-open/fallback patterns so tests and database persistence remain unaffected if Redis is unavailable.
+
+3. **Kafka Event Contracts & Async Foundation:**
+   - Updated `SERVICE_CONTRACTS.md` §12 with all 11 core events:
+     - `USER_REGISTERED` (`auth.user.registered.v1`)
+     - `USER_LOGIN` (`auth.user.login.v1`)
+     - `CHAT_CREATED` (`chat.conversation.created.v1`)
+     - `MESSAGE_SENT` (`chat.message.sent.v1`)
+     - `AI_REQUESTED` (`ai.inference.requested.v1`)
+     - `AI_RESPONSE_GENERATED` (`ai.inference.completed.v1`)
+     - `DOCUMENT_READY` (`document.uploaded.v1`)
+     - `DOCUMENT_PROCESSED` (`document.processed.v1`)
+     - `PAYMENT_COMPLETED` (`payment.completed.v1`)
+     - `PAYMENT_FAILED` (`payment.failed.v1`)
+     - `SUBSCRIPTION_CHANGED` (`subscription.changed.v1`)
+   - Standard uniform `EventEnvelope` (`eventId`, `eventType`, `eventVersion`, `occurredAt`, `correlationId`, `actorId`, `subjectId`, `payload`).
+   - Consumer groups configured: `nexa.user-service.events`, `nexa.chat-service.events`, `nexa.ai-service.events`.
+   - Idempotency enforced via `processed_event` database tables and Redis dedup keys.
+   - Dead Letter Topic (DLT) strategy implemented: 3 retry attempts with exponential backoff (`1000ms`, `2000ms`, `4000ms`), routing unrecoverable messages to `<topic>.DLT` with error metadata headers and dead-letter alert monitoring.
+   - Producer foundation implemented in `auth-service` (`publishUserRegistered`, `publishUserEmailVerified`, `publishUserLogin`), `chat-service` (`publishConversationCreated`, `publishMessageSent`, `publishAiRequested`), and `ai-service` (`InferenceEventPublisher`).
+
+4. **Service Completeness & Dockerfiles:**
+   - Added Dockerfiles for `api-gateway`, `user-service`, `chat-service`, and `ai-service` satisfying repository rule R3c.
+
+5. **Test Suite Verification:**
+   - `auth-service`: 33/33 tests pass.
+   - `user-service`: 15/15 tests pass.
+   - `chat-service`: 16/16 tests pass.
+   - `ai-service`: 37/37 tests pass.
+   - `api-gateway`: 12/12 tests pass.
+   - Total across all services: **113/113 tests pass**.
 
 ---
 
@@ -725,4 +773,5 @@ Ports: frontend `8088`, edge `8089`, gateway `8080`, services `8081`–`8087`, P
 | 2026-10-18 | 2 | Phase 2 completed. User Service (profile CRUD, preferences, account status, admin users, boundary clients, Kafka consumers, 15 tests pass) and API Gateway (Spring Cloud Gateway, RS256 JWT verification, rate limiting, CORS, correlation ID, internal path blocking, 12 tests pass). Both independent Spring Boot apps built and verified. |
 | 2026-10-19 | 3 | Chat Service implemented. Conversation CRUD, messages, regenerate, edit/resend, feedback, export, search, archive, soft-delete, model history. Flyway V1 schema. AI boundary interface with placeholder impl. RS256 JWT security. |
 | 2026-10-19 | 4 | AI Service implemented. Multi-provider inference (OpenAI, Gemini, Groq) via Spring AI. Blocking + SSE streaming completions. Model router, retry/backoff, provider error classification, token limits. Summarize endpoint added for Phase 5. |
-| 2026-10-21 | 5 | Conversation memory implemented. ContextWindowService (token counting, sliding window, summarization trigger, clear-memory). LiveAiServiceClient (real HTTP impl of both AiClientBoundary and AiSummarizationClient). Flyway V2 migration (context_summary, summary_message_seq). DELETE /{id}/memory endpoint. 10 unit tests — all pass. MEMORY.md updated. |
+| 2026-10-21 | 5 | Conversation memory implemented. ContextWindowService (token counting, sliding window, summarization trigger, clear-memory). LiveAiServiceClient (real HTTP impl of both AiClientBoundary and AiSummarizationClient). Flyway V2 migration (context_summary, summary_message_seq). DELETE /{id}/memory endpoint. 10 unit tests — all pass. MEMORY.md updated. |
+| 2026-10-26 | 6 | Phase 6 completed. Infrastructure + Async Foundation. PostgreSQL + pgvector, Redis 7 (persistence OFF, cache-only, rate-limit, OTP temporary state, usage counters), Apache Kafka 4 in KRaft mode (combined broker+controller, NO ZooKeeper). Event contracts for all 11 core domain events defined in SERVICE_CONTRACTS.md §12. Producer and consumer foundations with consumer groups, JSON serialization, idempotency, retry/exponential backoff, and DLT strategy (.DLT topic routing). Topic provisioning script added. Dockerfiles added for all implemented services. 113/113 tests pass. |
