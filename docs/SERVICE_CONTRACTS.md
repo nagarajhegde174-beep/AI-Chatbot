@@ -930,81 +930,255 @@ activates a subscription, so closing the tab cannot lose a payment.
 One producer owns each topic. A consumer never writes to a topic it does not own
 ([`RULES.md`](RULES.md) §4).
 
-| Topic | Producer | Consumers | Partitions | Key | Retention |
-|---|---|---|:--:|---|---|
-| `auth.user.registered.v1` | auth | user | 3 | userId | 7 d |
-| `auth.user.email_verified.v1` | auth | user | 3 | userId | 7 d |
-| `user.profile.updated.v1` | user | chat, subscription | 3 | userId | 7 d |
-| `user.status.changed.v1` | user | chat, subscription | 3 | userId | 7 d |
-| `user.account.deleted.v1` | user | chat, document, subscription | 3 | userId | 30 d |
-| `chat.message.completed.v1` | chat | subscription, analytics | 6 | conversationId | 7 d |
-| `ai.inference.completed.v1` | ai | subscription | 6 | userId | 7 d |
-| `document.uploaded.v1` | document | document, rag | 3 | documentId | 7 d |
-| `document.chunked.v1` | document | rag | 6 | documentId | 7 d |
-| `document.indexed.v1` | rag | chat, document | 3 | documentId | 7 d |
-| `document.deleted.v1` | document | rag | 3 | documentId | 30 d |
-| `document.processing.failed.v1` | document | document, chat | 3 | documentId | 7 d |
-| `subscription.activated.v1` | subscription | user, chat | 3 | userId | 30 d |
-| `subscription.cancelled.v1` | subscription | user, chat | 3 | userId | 30 d |
-| `subscription.usage.updated.v1` | subscription | user, chat | 3 | userId | 7 d |
-| `payment.recorded.v1` | subscription | analytics | 3 | userId | 90 d |
+| Topic | Producer | Consumers | Partitions | Key | Retention | Event Type |
+|---|---|---|:--:|---|---|---|
+| `auth.user.registered.v1` | auth | user, subscription | 3 | userId | 7 d | `USER_REGISTERED` |
+| `auth.user.login.v1` | auth | user, analytics | 3 | userId | 7 d | `USER_LOGIN` |
+| `auth.user.email_verified.v1` | auth | user | 3 | userId | 7 d | `USER_EMAIL_VERIFIED` |
+| `user.profile.updated.v1` | user | chat, subscription | 3 | userId | 7 d | `USER_PROFILE_UPDATED` |
+| `user.status.changed.v1` | user | chat, subscription | 3 | userId | 7 d | `USER_STATUS_CHANGED` |
+| `user.account.deleted.v1` | user | chat, document, subscription | 3 | userId | 30 d | `USER_ACCOUNT_DELETED` |
+| `chat.conversation.created.v1` | chat | user, analytics | 3 | conversationId | 7 d | `CHAT_CREATED` |
+| `chat.message.sent.v1` | chat | subscription, analytics | 6 | conversationId | 7 d | `MESSAGE_SENT` |
+| `chat.message.completed.v1` | chat | subscription, analytics | 6 | conversationId | 7 d | `MESSAGE_COMPLETED` |
+| `ai.inference.requested.v1` | chat | ai, analytics | 6 | userId | 7 d | `AI_REQUESTED` |
+| `ai.inference.completed.v1` | ai | subscription, chat | 6 | userId | 7 d | `AI_RESPONSE_GENERATED` |
+| `document.uploaded.v1` | document | rag | 3 | documentId | 7 d | `DOCUMENT_READY` |
+| `document.processed.v1` | rag | document, chat | 3 | documentId | 7 d | `DOCUMENT_PROCESSED` |
+| `document.chunked.v1` | document | rag | 6 | documentId | 7 d | `DOCUMENT_CHUNKED` |
+| `document.indexed.v1` | rag | chat, document | 3 | documentId | 7 d | `DOCUMENT_INDEXED` |
+| `document.deleted.v1` | document | rag | 3 | documentId | 30 d | `DOCUMENT_DELETED` |
+| `document.processing.failed.v1` | document | document, chat | 3 | documentId | 7 d | `DOCUMENT_PROCESSING_FAILED` |
+| `subscription.changed.v1` | subscription | user, chat | 3 | userId | 30 d | `SUBSCRIPTION_CHANGED` |
+| `subscription.activated.v1` | subscription | user, chat | 3 | userId | 30 d | `SUBSCRIPTION_ACTIVATED` |
+| `subscription.cancelled.v1` | subscription | user, chat | 3 | userId | 30 d | `SUBSCRIPTION_CANCELLED` |
+| `subscription.usage.updated.v1` | subscription | user, chat | 3 | userId | 7 d | `SUBSCRIPTION_USAGE_UPDATED` |
+| `payment.completed.v1` | subscription | user, chat, analytics | 3 | userId | 90 d | `PAYMENT_COMPLETED` |
+| `payment.failed.v1` | subscription | user, analytics | 3 | userId | 90 d | `PAYMENT_FAILED` |
+| `payment.recorded.v1` | subscription | analytics | 3 | userId | 90 d | `PAYMENT_RECORDED` |
 
-Partition counts scale with throughput; `userId` and `documentId` keys keep per-entity ordering.
+Partition counts scale with throughput; `userId`, `conversationId`, and `documentId` keys keep per-entity ordering.
 
 ### 12.2 Envelope
 
-Every event uses one envelope:
+Every event uses one uniform envelope:
 
 ```json
 {
   "eventId": "b7d9e1a4-3c2f-4a6b-8e5d-1f3a7b9c2e60",
-  "eventType": "chat.message.completed.v1",
+  "eventType": "chat.message.sent.v1",
   "eventVersion": 1,
   "occurredAt": "2026-01-15T10:30:04Z",
   "correlationId": "0f9c1e2a-4b7d-4f1e-9a3c-2d5e6f708192",
   "actorId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
-  "subjectId": "3c5a...",
+  "subjectId": "3c5a7b1e-4d2a-4e8c-9b1e-7f3a9c5e2d10",
   "payload": { }
 }
 ```
 
 **Rules.**
-- `eventId` is the idempotency key. A consumer deduplicates on it.
-- `correlationId` ties the event to the request that caused it. Without it, a bug report cannot
-  be traced.
-- `actorId` is who caused it; `subjectId` is what it happened to. An admin acting on a user has
-  different values.
-- **No secret, no prompt content and no document content in any payload.** Analytics needs
-  counts, and counts are what it gets.
+- `eventId` is the idempotency key (UUIDv4). Consumers deduplicate on it.
+- `correlationId` ties the event to the request that caused it. Without it, traces cannot span Kafka hops.
+- `actorId` is who triggered the event; `subjectId` is what resource it targeted.
+- **Payload privacy rule:** No raw secrets, passwords, prompt text or document file content in event payloads. Only metadata, identifiers, statuses, token counts and metrics.
 
-### 12.3 Naming
+### 12.3 Event Payload Contracts (Phase 6 Core Events)
 
-`<domain>.<entity>.<past-tense-verb>.v<N>`, lowercase, dot-separated.
+#### 1. `auth.user.registered.v1` (`USER_REGISTERED`)
+```json
+{
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "email": "user@example.com",
+  "displayName": "Ada Lovelace",
+  "roles": ["USER"],
+  "status": "PENDING_VERIFICATION",
+  "createdAt": "2026-01-15T10:30:00Z"
+}
+```
 
-Facts, never commands: `chat.message.completed.v1`, not `send-chat-message.v1`. A consumer
-should not need to know what to do, only what happened.
+#### 2. `auth.user.login.v1` (`USER_LOGIN`)
+```json
+{
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "email": "user@example.com",
+  "loginTime": "2026-01-15T10:30:00Z",
+  "ipAddress": "192.168.1.100",
+  "userAgent": "Mozilla/5.0..."
+}
+```
 
-### 12.4 Evolution
+#### 3. `chat.conversation.created.v1` (`CHAT_CREATED`)
+```json
+{
+  "conversationId": "3c5a7b1e-4d2a-4e8c-9b1e-7f3a9c5e2d10",
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "title": "First Project Discussion",
+  "model": "gpt-4o-mini",
+  "ragEnabled": true,
+  "createdAt": "2026-01-15T10:30:00Z"
+}
+```
 
-| Change | Compatible |
-|---|---|
-| Add a field | yes |
-| Add an enum value | yes |
-| Remove a field | no — deprecate, retain, remove at a version bump |
-| Rename or retype a field | no |
-| Change a field's meaning | no — that is a new event type |
+#### 4. `chat.message.sent.v1` (`MESSAGE_SENT`)
+```json
+{
+  "messageId": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+  "conversationId": "3c5a7b1e-4d2a-4e8c-9b1e-7f3a9c5e2d10",
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "role": "USER",
+  "sequenceNumber": 1,
+  "characterCount": 42,
+  "createdAt": "2026-01-15T10:30:01Z"
+}
+```
 
-A consumer must ignore unknown fields. A producer must never change the meaning of an existing
-field.
+#### 5. `ai.inference.requested.v1` (`AI_REQUESTED`)
+```json
+{
+  "requestId": "req-0f9c1e2a-4b7d-4f1e",
+  "conversationId": "3c5a7b1e-4d2a-4e8c-9b1e-7f3a9c5e2d10",
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "provider": "OPENAI",
+  "model": "gpt-4o-mini",
+  "inputTokensEstimated": 120,
+  "requestedAt": "2026-01-15T10:30:02Z"
+}
+```
 
-### 12.5 Delivery
+#### 6. `ai.inference.completed.v1` (`AI_RESPONSE_GENERATED`)
+```json
+{
+  "requestId": "req-0f9c1e2a-4b7d-4f1e",
+  "conversationId": "3c5a7b1e-4d2a-4e8c-9b1e-7f3a9c5e2d10",
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "provider": "OPENAI",
+  "model": "gpt-4o-mini",
+  "promptTokens": 115,
+  "completionTokens": 84,
+  "totalTokens": 199,
+  "latencyMs": 850,
+  "status": "SUCCESS",
+  "completedAt": "2026-01-15T10:30:03Z"
+}
+```
 
-At-least-once. Therefore:
+#### 7. `document.uploaded.v1` (`DOCUMENT_READY`)
+```json
+{
+  "documentId": "4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "filename": "quarterly_report.pdf",
+  "contentType": "application/pdf",
+  "byteSize": 1048576,
+  "storageUri": "s3://nexa-docs/user/doc.pdf",
+  "uploadedAt": "2026-01-15T10:30:00Z"
+}
+```
 
-- Every consumer is idempotent, deduplicating on `eventId`.
-- Events are not delivered in order across partitions; ordering holds only within a partition,
-  and only for the same key.
-- A consumer must tolerate an event arriving late, or twice, or after a restart.
+#### 8. `document.processed.v1` (`DOCUMENT_PROCESSED`)
+```json
+{
+  "documentId": "4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "chunkCount": 38,
+  "vectorCount": 38,
+  "embeddingModel": "text-embedding-3-small",
+  "status": "COMPLETED",
+  "processedAt": "2026-01-15T10:31:00Z"
+}
+```
+
+#### 9. `payment.completed.v1` (`PAYMENT_COMPLETED`)
+```json
+{
+  "paymentId": "pay_test_01928374",
+  "orderId": "order_test_98765432",
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "amount": 2900,
+  "currency": "INR",
+  "provider": "RAZORPAY",
+  "status": "CAPTURED",
+  "paidAt": "2026-01-15T10:30:00Z"
+}
+```
+
+#### 10. `payment.failed.v1` (`PAYMENT_FAILED`)
+```json
+{
+  "paymentId": "pay_test_failed_9999",
+  "orderId": "order_test_98765432",
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "amount": 2900,
+  "currency": "INR",
+  "errorCode": "BAD_REQUEST_PAYMENT_FAILED",
+  "errorDescription": "Card declined by issuing bank",
+  "failedAt": "2026-01-15T10:30:00Z"
+}
+```
+
+#### 11. `subscription.changed.v1` (`SUBSCRIPTION_CHANGED`)
+```json
+{
+  "subscriptionId": "sub_test_123456",
+  "userId": "9f1c7b2e-4a3d-4c8f-b1e2-5d7a9c3e0f14",
+  "oldPlan": "FREE",
+  "newPlan": "PRO",
+  "status": "ACTIVE",
+  "currentPeriodStart": "2026-01-15T10:30:00Z",
+  "currentPeriodEnd": "2026-02-15T10:30:00Z",
+  "changedAt": "2026-01-15T10:30:00Z"
+}
+```
+
+### 12.4 Consumer Groups & Idempotency
+
+| Consumer Group | Service | Assigned Topics |
+|---|---|---|
+| `nexa.user-service.events` | user-service | `auth.user.registered.v1`, `auth.user.email_verified.v1`, `subscription.changed.v1`, `payment.completed.v1` |
+| `nexa.chat-service.events` | chat-service | `user.status.changed.v1`, `user.account.deleted.v1`, `subscription.changed.v1`, `document.processed.v1` |
+| `nexa.ai-service.events` | ai-service | `ai.inference.requested.v1` |
+| `nexa.subscription-service.events` | subscription-service | `auth.user.registered.v1`, `ai.inference.completed.v1`, `chat.message.sent.v1` |
+
+Every consumer guarantees idempotency by checking `eventId` against a deduplication store (`processed_event` table or Redis key `dedup:event:{eventId}` with 7-day TTL).
+
+### 12.5 Retry Policy & Dead Letter Topic (DLT) Strategy
+
+1. **Retry policy:**
+   - Transients (DB connection hiccup, temporary downstream timeout): up to 3 retry attempts with exponential backoff (`1000ms`, `2000ms`, `4000ms`).
+   - Non-retryable exceptions (JSON deserialization error, malformed envelope, unrecoverable domain failure): bypass retries and route directly to DLT.
+2. **DLT naming:**
+   - Suffix convention: `<original-topic>.DLT` (e.g. `auth.user.registered.v1.DLT`, `chat.message.sent.v1.DLT`).
+3. **DLT metadata:**
+   - Spring Kafka `DeadLetterPublishingRecoverer` automatically adds recovery headers:
+     - `kafka_original-topic`
+     - `kafka_original-partition`
+     - `kafka_original-offset`
+     - `kafka_exception-message`
+     - `kafka_exception-stacktrace`
+4. **DLT monitoring:**
+   - A dedicated Dead Letter listener logs alerts on any message arriving in a `.DLT` topic for operator triage.
+
+### 12.6 REST versus Kafka Boundaries
+
+- **REST (Synchronous):** Use when the caller needs an immediate response or return value (e.g., user login, JWT issuance, fetching conversation messages, streaming SSE responses, verifying passwords).
+- **Kafka (Asynchronous):** Use for event notification, cross-service reaction, auditing, metrics, usage aggregation, indexing jobs, and background processing.
+- A Kafka topic must never be used as an RPC mechanism.
+
+### 12.7 Redis Foundation & Cache Contracts
+
+Redis 7 runs with **persistence disabled** (`save ""` and `appendonly no`). It serves strictly as an ephemeral cache, rate-limiting store, and temporary state coordinator.
+
+**Core Invariant:** Redis MUST NOT replace PostgreSQL. Losing every Redis key must degrade performance, never correctness.
+
+| Key Pattern | Purpose | Data Type | Default TTL | Owning Service |
+|---|---|---|---|---|
+| `auth:ratelimit:login:{ipOrEmail}` | Brute-force protection counter | String (integer) | 60 seconds | auth-service |
+| `auth:otp:{email}` | Temporary OTP / email verification state | String / JSON | 15 minutes | auth-service |
+| `auth:blacklist:token:{jti}` | Temporary revoked JWT identifiers | String | Expiration delta | auth-service |
+| `user:profile:{userId}` | Frequently accessed user profile | JSON | 10 minutes | user-service |
+| `chat:conversations:{userId}` | Cached conversation summary list | JSON | 5 minutes | chat-service |
+| `ai:models:availability` | Cached health status of AI providers | JSON | 30 seconds | ai-service |
+| `ai:usage:{userId}:{model}:{date}` | Atomic token usage counters | Hash | 30 days | ai-service |
 
 ---
 

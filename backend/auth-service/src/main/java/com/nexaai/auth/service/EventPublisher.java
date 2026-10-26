@@ -67,6 +67,27 @@ public class EventPublisher {
         send(KafkaConfig.TOPIC_USER_EMAIL_VERIFIED, user.getId().toString(), envelope);
     }
 
+    public void publishUserLogin(AuthUser user, String correlationId, String ipAddress, String userAgent) {
+        com.nexaai.auth.dto.event.UserLoginPayload payload = new com.nexaai.auth.dto.event.UserLoginPayload(
+                user.getId(),
+                user.getEmail(),
+                Instant.now(),
+                ipAddress,
+                userAgent
+        );
+
+        EventEnvelope<com.nexaai.auth.dto.event.UserLoginPayload> envelope = EventEnvelope.create(
+                KafkaConfig.TOPIC_USER_LOGIN,
+                1,
+                correlationId,
+                user.getId().toString(),
+                user.getId().toString(),
+                payload
+        );
+
+        send(KafkaConfig.TOPIC_USER_LOGIN, user.getId().toString(), envelope);
+    }
+
     private void send(String topic, String key, Object event) {
         if (kafkaTemplate == null) {
             log.warn("KafkaTemplate not configured; skipping Kafka event publish for topic: {}", topic);

@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: chat-service-test
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
   datasource:
     url: jdbc:h2:mem:nexa_chat;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
     driver-class-name: org.h2.Driver

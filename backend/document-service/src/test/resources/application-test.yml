@@ -1,0 +1,44 @@
+server:
+  port: 0
+
+spring:
+  application:
+    name: document-service-test
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:nexa_document;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+    open-in-view: false
+  flyway:
+    enabled: false
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
+
+nexa:
+  storage:
+    path: target/test-storage
+  upload:
+    max-file-size-bytes: 26214400 # 25MB
+    allowed-content-types:
+      - application/pdf
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - text/plain
+      - text/markdown
+      - text/csv
+  jwt:
+    issuer: nexa-auth-service
+    audience: nexaai-web
+    public-key: ""

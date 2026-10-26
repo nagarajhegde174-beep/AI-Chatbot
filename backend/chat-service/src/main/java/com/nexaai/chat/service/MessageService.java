@@ -26,6 +26,9 @@ public class MessageService {
     private final MessageCitationRepository citationRepository;
     private final AiClientBoundary aiClientBoundary;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ChatEventPublisher eventPublisher;
+
     public MessageService(
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
@@ -75,6 +78,11 @@ public class MessageService {
         );
         messageRepository.save(userMessage);
 
+        if (eventPublisher != null) {
+            eventPublisher.publishMessageSent(userMessage, null);
+            eventPublisher.publishAiRequested(conversationId, userId, model, userMessage.getContent().length(), null);
+        }
+
         // 10. Store AI response placeholder/integration boundary
         AiClientBoundary.AiResponseResult aiResult = aiClientBoundary.generateResponse(conversation, userMessage);
 
@@ -93,6 +101,10 @@ public class MessageService {
         assistantMessage.setStatus(MessageStatus.COMPLETED);
 
         Message savedAssistant = messageRepository.save(assistantMessage);
+
+        if (eventPublisher != null) {
+            eventPublisher.publishMessageSent(savedAssistant, null);
+        }
 
         // Update conversation activity
         conversation.setLastMessageAt(savedAssistant.getCreatedAt());
