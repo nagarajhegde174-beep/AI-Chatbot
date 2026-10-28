@@ -1,0 +1,33 @@
+server:
+  port: 0
+
+spring:
+  application:
+    name: analytics-service-test
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+  datasource:
+    url: jdbc:h2:mem:nexa_analytics;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+    open-in-view: false
+  flyway:
+    enabled: false
+  kafka:
+    listener:
+      auto-startup: false
+
+nexa:
+  analytics:
+    kafka:
+      enabled: false
+      topic: usage.events

@@ -6,13 +6,20 @@ import { LoginPage } from './components/auth/LoginPage.tsx'
 import { RegisterPage } from './components/auth/RegisterPage.tsx'
 import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage.tsx'
 import { ChatLayout } from './components/chat/ChatLayout.tsx'
+import { UserUsageDashboard } from './components/usage/UserUsageDashboard.tsx'
+import { AdminPortal } from './components/admin/AdminPortal.tsx'
 import type { AppRoute } from './types/index.ts'
 
 function AppContent() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
   const [route, setRoute] = useState<AppRoute>(() => (isAuthenticated ? 'chat' : 'login'))
 
   const handleNavigate = (nextRoute: AppRoute) => {
+    // Restrict admin route to users with ADMIN role
+    if (nextRoute === 'admin' && !user?.roles?.includes('ADMIN')) {
+      setRoute('chat')
+      return
+    }
     setRoute(nextRoute)
   }
 
@@ -24,6 +31,8 @@ function AppContent() {
         {route === 'register' && <RegisterPage onNavigate={handleNavigate} />}
         {route === 'forgot-password' && <ForgotPasswordPage onNavigate={handleNavigate} />}
         {route === 'chat' && <ChatLayout />}
+        {route === 'usage' && <UserUsageDashboard />}
+        {route === 'admin' && <AdminPortal />}
       </div>
     </div>
   )
