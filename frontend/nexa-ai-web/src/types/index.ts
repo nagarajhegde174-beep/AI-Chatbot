@@ -54,4 +54,55 @@ export interface Message {
 
 export type Theme = 'light' | 'dark'
 
-export type AppRoute = 'login' | 'register' | 'forgot-password' | 'chat'
+export type AppRoute = 'login' | 'register' | 'forgot-password' | 'chat' | 'usage' | 'admin'
+
+export interface UserUsageData {
+  readonly aiRequests: number
+  readonly tokenUsage: {
+    readonly promptTokens: number
+    readonly completionTokens: number
+    readonly totalTokens: number
+  }
+  readonly documentCount: number
+  readonly storageUsageBytes: number
+  readonly storageUsageFormatted: string
+  readonly dailyUsage: ReadonlyArray<{
+    readonly date: string
+    readonly requests: number
+    readonly tokens: number
+    readonly estimatedCostUsd: number
+  }>
+  readonly monthlyUsage: {
+    readonly currentMonthTokens: number
+    readonly currentMonthRequests: number
+    readonly currentMonthCostUsd: number
+  }
+  readonly modelUsage: ReadonlyArray<{
+    readonly model: string
+    readonly provider: string
+    readonly requests: number
+    readonly tokens: number
+    readonly estimatedCostUsd: number
+  }>
+  readonly remainingQuota: number
+  readonly subscriptionStatus: {
+    readonly tier: string
+    readonly tokenQuota: number
+    readonly tokensUsed: number
+    readonly status: string
+  }
+}
+
+export interface AdminOverviewData {
+  readonly totalUsers: number
+  readonly activeUsers: number
+  readonly totalAiRequests: number
+  readonly successfulRequests: number
+  readonly failedRequests: number
+  readonly totalTokens: number
+  readonly totalErrors: number
+  readonly errorRatePercent: number
+  readonly subscriptionStatistics: Record<string, number>
+  readonly totalEstimatedAiCostUsd: number
+}
+

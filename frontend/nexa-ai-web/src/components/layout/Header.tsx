@@ -26,8 +26,35 @@ export function Header({ currentRoute, onNavigate }: HeaderProps) {
             <span className="fw-bold fs-5 tracking-tight">NexaAI</span>
           </button>
           <span className="badge text-bg-secondary-subtle border text-secondary small d-none d-md-inline">
-            Phase 3 — Chat Foundation
+            Phase 9 — Usage + Admin + Analytics
           </span>
+          {isAuthenticated && (
+            <div className="btn-group btn-group-sm ms-2">
+              <button
+                type="button"
+                className={`btn ${currentRoute === 'chat' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => onNavigate('chat')}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                className={`btn ${currentRoute === 'usage' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                onClick={() => onNavigate('usage')}
+              >
+                Usage
+              </button>
+              {user?.roles?.includes('ADMIN') && (
+                <button
+                  type="button"
+                  className={`btn ${currentRoute === 'admin' ? 'btn-warning' : 'btn-outline-warning'}`}
+                  onClick={() => onNavigate('admin')}
+                >
+                  Admin
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="d-flex align-items-center gap-2">
