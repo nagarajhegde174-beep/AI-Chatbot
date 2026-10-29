@@ -1,75 +1,429 @@
 // =====================================================================
-// Application component styles.
-//
-// Everything here sits ON TOP of Bootstrap. The rule from docs/DESIGN.md is
-// that the visual language lives in this stylesheet and not in markup, so a
-// change to how something looks is made here rather than by editing classes
-// across components.
+// NexaAI Application Styles (Linear / Vercel / ChatGPT Aesthetic)
+// Clean, modern, calm, polished, content-focused.
 // =====================================================================
 
 @use 'tokens' as t;
 
-// --- wordmark ---------------------------------------------------------------
-.nexa-wordmark {
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code, pre, kbd, samp {
+  font-family: var(--font-mono);
+}
+
+// --- Brand Logo & Mark ---
+.nexa-brand-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
   font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--nexa-accent);
+  font-size: 1.125rem;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  user-select: none;
+
+  .nexa-brand-symbol {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: linear-gradient(135deg, var(--brand-primary), #4f39b8);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(110, 86, 207, 0.3);
+  }
+
+  .nexa-brand-text {
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .nexa-brand-ai {
+    color: var(--brand-primary);
+    font-weight: 600;
+    margin-left: 1px;
+  }
 }
 
-// --- surfaces ---------------------------------------------------------------
-// Uses a token rather than a literal, so it follows the theme automatically.
-.nexa-surface-raised {
-  background-color: var(--nexa-surface-raised);
-  border: 1px solid var(--nexa-border);
+// --- Cards & Surfaces ---
+.nexa-card {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-subtle);
   border-radius: t.$nexa-radius-lg;
-  box-shadow: 0 4px 16px rgb(var(--nexa-shadow-color) / 8%);
+  box-shadow: t.$nexa-shadow-sm;
+  transition: border-color t.$nexa-transition-fast, box-shadow t.$nexa-transition-fast;
+
+  &:hover {
+    border-color: var(--border-strong);
+  }
 }
 
-// --- layout -----------------------------------------------------------------
-// Caps the reading measure. A full-width paragraph at 1920px is unreadable, and
-// generated answers are exactly the text that suffers from it.
-.nexa-measure {
-  max-width: t.$nexa-measure;
+.nexa-card-elevated {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: t.$nexa-radius-xl;
+  box-shadow: t.$nexa-shadow-md;
 }
 
-.nexa-stack > * + * {
-  margin-block-start: t.$nexa-space-4;
-}
-
-// --- focus ------------------------------------------------------------------
-// Focus is never removed. Only its appearance is replaced, so keyboard users
-// can always see where they are (docs/DESIGN.md section 3.4).
-:focus-visible {
-  outline: 3px solid var(--nexa-accent);
-  outline-offset: 2px;
-  border-radius: t.$nexa-radius-sm;
-}
-
-// --- interactive targets ----------------------------------------------------
-.nexa-touch-target {
-  min-width: t.$nexa-touch-target;
-  min-height: t.$nexa-touch-target;
+// --- Interactive Elements: Buttons & Badges ---
+.nexa-btn-primary {
+  background-color: var(--brand-primary);
+  color: #ffffff;
+  border: 1px solid transparent;
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  border-radius: t.$nexa-radius-md;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all t.$nexa-transition-fast;
+
+  &:hover:not(:disabled) {
+    background-color: var(--brand-primary-hover);
+    color: #ffffff;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
 
-// --- chat thread ------------------------------------------------------------
-// Placeholder for Phase 5. The message, citation and streaming styles are
-// written in the Chat phase, when the SSE contract is implemented. Adding them
-// now would mean guessing at the event names in
-// docs/SERVICE_CONTRACTS.md section 7.2, and a guessed class name that nothing
-// uses is not a placeholder, it is dead code.
+.nexa-btn-secondary {
+  background-color: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  border-radius: t.$nexa-radius-md;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all t.$nexa-transition-fast;
 
-// --- reduced motion ---------------------------------------------------------
-// Respect the OS setting rather than animating regardless.
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+  &:hover:not(:disabled) {
+    background-color: var(--surface-hover);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
   }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.nexa-btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: t.$nexa-radius-md;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  cursor: pointer;
+  transition: all t.$nexa-transition-fast;
+
+  &:hover {
+    color: var(--text-primary);
+    background-color: var(--surface-hover);
+  }
+}
+
+// --- Badges ---
+.nexa-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: t.$nexa-radius-pill;
+  border: 1px solid transparent;
+}
+
+.nexa-badge-brand {
+  background-color: rgba(110, 86, 207, 0.12);
+  color: var(--brand-primary);
+  border-color: rgba(110, 86, 207, 0.25);
+}
+
+.nexa-badge-secondary {
+  background-color: rgba(20, 184, 166, 0.12);
+  color: var(--brand-secondary);
+  border-color: rgba(20, 184, 166, 0.25);
+}
+
+.nexa-badge-subtle {
+  background-color: var(--surface-hover);
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+}
+
+.nexa-badge-test {
+  background-color: rgba(234, 88, 12, 0.12);
+  color: #ea580c;
+  border-color: rgba(234, 88, 12, 0.3);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.7rem;
+}
+
+// --- Inputs & Forms ---
+.nexa-input {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: t.$nexa-radius-md;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.875rem;
+  width: 100%;
+  transition: border-color t.$nexa-transition-fast, box-shadow t.$nexa-transition-fast;
+
+  &:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px rgba(110, 86, 207, 0.15);
+  }
+
+  &::placeholder {
+    color: var(--text-muted);
+  }
+}
+
+// --- OTP Input Boxes ---
+.nexa-otp-container {
+  display: flex;
+  gap: 0.65rem;
+  justify-content: center;
+  margin: 1.25rem 0;
+}
+
+.nexa-otp-box {
+  width: 44px;
+  height: 52px;
+  text-align: center;
+  font-size: 1.35rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  background-color: var(--surface-card);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: t.$nexa-radius-md;
+  color: var(--text-primary);
+  transition: all t.$nexa-transition-fast;
+
+  &:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px rgba(110, 86, 207, 0.2);
+  }
+
+  &.is-filled {
+    border-color: var(--border-strong);
+  }
+
+  &.is-error {
+    border-color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.04);
+  }
+
+  &.is-success {
+    border-color: #10b981;
+    background-color: rgba(16, 185, 129, 0.04);
+  }
+}
+
+// --- AI Thinking: Breathing 3-dot indicator ---
+.nexa-thinking-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0.35rem 0.75rem;
+  border-radius: t.$nexa-radius-pill;
+  background-color: var(--surface-hover);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+
+  .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: var(--brand-primary);
+    opacity: 0.4;
+    animation: nexa-breathe 1.4s infinite ease-in-out both;
+
+    &:nth-child(1) { animation-delay: 0s; }
+    &:nth-child(2) { animation-delay: 0.2s; }
+    &:nth-child(3) { animation-delay: 0.4s; }
+  }
+}
+
+@keyframes nexa-breathe {
+  0%, 80%, 100% {
+    transform: scale(0.7);
+    opacity: 0.3;
+  }
+  40% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+// --- Streaming Caret ---
+.nexa-streaming-caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  background-color: var(--brand-primary);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: nexa-caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes nexa-caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+// --- Layout Shell ---
+.nexa-shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: var(--bg-base);
+}
+
+.nexa-sidebar {
+  width: 250px;
+  background-color: var(--surface-card);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width t.$nexa-transition-base;
+
+  @media (max-width: 991px) {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1045;
+    transform: translateX(-100%);
+    box-shadow: t.$nexa-shadow-lg;
+
+    &.is-open {
+      transform: translateX(0);
+    }
+  }
+}
+
+.nexa-sidebar-overlay {
+  display: none;
+  @media (max-width: 991px) {
+    &.is-open {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 1040;
+    }
+  }
+}
+
+.nexa-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: t.$nexa-radius-md;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all t.$nexa-transition-fast;
+  border: 1px solid transparent;
+
+  &:hover {
+    color: var(--text-primary);
+    background-color: var(--surface-hover);
+  }
+
+  &.is-active {
+    color: var(--text-primary);
+    background-color: var(--surface-hover);
+    border-color: var(--border-subtle);
+    font-weight: 600;
+
+    svg {
+      color: var(--brand-primary);
+    }
+  }
+}
+
+// --- Responsive Tables ---
+.nexa-table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border-subtle);
+  border-radius: t.$nexa-radius-lg;
+  background-color: var(--surface-card);
+}
+
+.nexa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  text-align: left;
+
+  th {
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background-color: var(--surface-hover);
+    border-bottom: 1px solid var(--border-subtle);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.75rem 1rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background-color: rgba(110, 86, 207, 0.02);
+  }
+}
+
+// --- Focus visible accessibility ---
+:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
 }

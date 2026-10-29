@@ -1,109 +1,126 @@
 // =====================================================================
-// Themes: light, dark and system.
-//
-// `data-bs-theme` on <html> is the single switch (docs/DESIGN.md section 3.3).
-// With the attribute absent, Bootstrap follows the OS via prefers-color-scheme.
-//
-// Each block below defines one token set and then remaps Bootstrap's own
-// variables onto it. Components therefore use `btn-primary`, `alert-danger`,
-// `text-body-secondary` and follow the theme without a single component-level
-// override.
+// NexaAI Themes: Light, Dark, System
+// Uses data-theme="light" | "dark" | "system"
 // =====================================================================
 
 @use 'tokens' as t;
 
-// --- light ------------------------------------------------------------------
+:root {
+  --brand-primary: #6E56CF;
+  --brand-primary-hover: #7C66E0;
+  --brand-secondary: #14B8A6;
+  --font-sans: #{t.$nexa-font-sans};
+  --font-mono: #{t.$nexa-font-mono};
+}
+
+// --- Light Theme Defaults ---
 :root,
+[data-theme='light'],
 [data-bs-theme='light'] {
   color-scheme: light;
 
-  --nexa-bg: #f7f7fb;
-  --nexa-surface: #ffffff;
-  --nexa-surface-raised: #ffffff;
-  --nexa-surface-sunken: #ececf4;
-  --nexa-border: #dcdce6;
-  --nexa-text: #14142b;
-  --nexa-muted: #5c5c78;
-  --nexa-accent: hsl(#{t.$nexa-accent-h}, #{t.$nexa-accent-s}, 55%);
-  --nexa-accent-contrast: #ffffff;
-  --nexa-success: #0f7b4f;
-  --nexa-warning: #9a6700;
-  --nexa-danger: #b3261e;
-  --nexa-shadow-color: 18 18 43;
+  --bg-base: #F7F8FA;
+  --bg-elevated: #FFFFFF;
+  --surface-card: #FFFFFF;
+  --surface-hover: #F0F1F5;
+  --border-subtle: #E4E6EB;
+  --border-strong: #D2D5DD;
+  --text-primary: #14161C;
+  --text-secondary: #4A4F5C;
+  --text-muted: #8A8F9C;
 
-  // Remap Bootstrap onto the tokens above.
-  --bs-body-bg: var(--nexa-bg);
-  --bs-body-color: var(--nexa-text);
-  --bs-border-color: var(--nexa-border);
-  --bs-secondary-color: var(--nexa-muted);
-  --bs-link-color: var(--nexa-accent);
-  --bs-link-hover-color: var(--nexa-accent);
-  --bs-primary: var(--nexa-accent);
-  --bs-success: var(--nexa-success);
-  --bs-warning: var(--nexa-warning);
-  --bs-danger: var(--nexa-danger);
-  --bs-light: var(--nexa-surface);
-  --bs-dark: var(--nexa-text);
-  --bs-body-font-family: #{t.$nexa-font-sans};
+  // Remap Bootstrap variables
+  --bs-body-bg: var(--bg-base);
+  --bs-body-color: var(--text-primary);
+  --bs-border-color: var(--border-subtle);
+  --bs-secondary-color: var(--text-secondary);
+  --bs-link-color: var(--brand-primary);
+  --bs-link-hover-color: var(--brand-primary-hover);
+  --bs-primary: var(--brand-primary);
+  --bs-primary-rgb: 110, 86, 207;
+  --bs-body-font-family: var(--font-sans);
   --bs-body-font-size: #{t.$nexa-font-size-base};
   --bs-body-line-height: #{t.$nexa-line-height};
   --bs-border-radius: #{t.$nexa-radius-md};
+
+  // Backwards compatibility tokens
+  --nexa-bg: var(--bg-base);
+  --nexa-surface: var(--surface-card);
+  --nexa-surface-raised: var(--bg-elevated);
+  --nexa-border: var(--border-subtle);
+  --nexa-text: var(--text-primary);
+  --nexa-muted: var(--text-muted);
+  --nexa-accent: var(--brand-primary);
 }
 
-// --- dark -------------------------------------------------------------------
-// A real theme, not an inversion. Surfaces get lighter with elevation rather
-// than darker, which is what a dark UI actually needs to stay readable.
+// --- Dark Theme Defaults ---
+[data-theme='dark'],
 [data-bs-theme='dark'] {
   color-scheme: dark;
 
-  --nexa-bg: #0d0d18;
-  --nexa-surface: #16162a;
-  --nexa-surface-raised: #1e1e36;
-  --nexa-surface-sunken: #101020;
-  --nexa-border: #2e2e4d;
-  --nexa-text: #ececf7;
-  --nexa-muted: #a0a0c0;
-  --nexa-accent: hsl(#{t.$nexa-accent-h}, #{t.$nexa-accent-s}, 72%);
-  --nexa-accent-contrast: #0d0d18;
-  --nexa-success: #4ade80;
-  --nexa-warning: #fbbf24;
-  --nexa-danger: #f87171;
-  --nexa-shadow-color: 0 0 0;
+  --bg-base: #0B0D12;
+  --bg-elevated: #12141C;
+  --surface-card: #171922;
+  --surface-hover: #1E212C;
+  --border-subtle: #262A36;
+  --border-strong: #343945;
+  --text-primary: #F4F5F7;
+  --text-secondary: #A3A8B8;
+  --text-muted: #6B7080;
 
-  --bs-body-bg: var(--nexa-bg);
-  --bs-body-color: var(--nexa-text);
-  --bs-border-color: var(--nexa-border);
-  --bs-secondary-color: var(--nexa-muted);
-  --bs-link-color: var(--nexa-accent);
-  --bs-link-hover-color: var(--nexa-accent);
-  --bs-primary: var(--nexa-accent);
-  --bs-success: var(--nexa-success);
-  --bs-warning: var(--nexa-warning);
-  --bs-danger: var(--nexa-danger);
-  --bs-light: var(--nexa-surface);
-  --bs-dark: var(--nexa-text);
+  // Remap Bootstrap variables
+  --bs-body-bg: var(--bg-base);
+  --bs-body-color: var(--text-primary);
+  --bs-border-color: var(--border-subtle);
+  --bs-secondary-color: var(--text-secondary);
+  --bs-link-color: var(--brand-primary);
+  --bs-link-hover-color: var(--brand-primary-hover);
+  --bs-primary: var(--brand-primary);
+  --bs-primary-rgb: 110, 86, 207;
+  --bs-body-font-family: var(--font-sans);
+
+  // Backwards compatibility tokens
+  --nexa-bg: var(--bg-base);
+  --nexa-surface: var(--surface-card);
+  --nexa-surface-raised: var(--bg-elevated);
+  --nexa-border: var(--border-subtle);
+  --nexa-text: var(--text-primary);
+  --nexa-muted: var(--text-muted);
+  --nexa-accent: var(--brand-primary);
 }
 
-// --- system -----------------------------------------------------------------
-// With no data-bs-theme attribute, follow the operating system. Bootstrap
-// applies a `dark` class/attribute automatically in this case; the variables
-// above are inherited either way because :root already declares the light set.
+// --- System Theme (Dark mode OS preference) ---
 @media (prefers-color-scheme: dark) {
-  :root:not([data-bs-theme='light']) {
+  :root[data-theme='system'],
+  [data-theme='system'] {
     color-scheme: dark;
 
-    --nexa-bg: #0d0d18;
-    --nexa-surface: #16162a;
-    --nexa-surface-raised: #1e1e36;
-    --nexa-surface-sunken: #101020;
-    --nexa-border: #2e2e4d;
-    --nexa-text: #ececf7;
-    --nexa-muted: #a0a0c0;
-    --nexa-accent: hsl(#{t.$nexa-accent-h}, #{t.$nexa-accent-s}, 72%);
-    --nexa-accent-contrast: #0d0d18;
-    --nexa-success: #4ade80;
-    --nexa-warning: #fbbf24;
-    --nexa-danger: #f87171;
-    --nexa-shadow-color: 0 0 0;
+    --bg-base: #0B0D12;
+    --bg-elevated: #12141C;
+    --surface-card: #171922;
+    --surface-hover: #1E212C;
+    --border-subtle: #262A36;
+    --border-strong: #343945;
+    --text-primary: #F4F5F7;
+    --text-secondary: #A3A8B8;
+    --text-muted: #6B7080;
+
+    --bs-body-bg: var(--bg-base);
+    --bs-body-color: var(--text-primary);
+    --bs-border-color: var(--border-subtle);
+    --bs-secondary-color: var(--text-secondary);
+    --bs-link-color: var(--brand-primary);
+    --bs-link-hover-color: var(--brand-primary-hover);
+    --bs-primary: var(--brand-primary);
+    --bs-primary-rgb: 110, 86, 207;
+    --bs-body-font-family: var(--font-sans);
+
+    --nexa-bg: var(--bg-base);
+    --nexa-surface: var(--surface-card);
+    --nexa-surface-raised: var(--bg-elevated);
+    --nexa-border: var(--border-subtle);
+    --nexa-text: var(--text-primary);
+    --nexa-muted: var(--text-muted);
+    --nexa-accent: var(--brand-primary);
   }
 }

@@ -11,7 +11,7 @@ export function UserUsageDashboard() {
     setLoading(true)
     setError(null)
     try {
-      const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token')
+      const token = localStorage.getItem('nexa_access_token') || localStorage.getItem('access_token') || sessionStorage.getItem('access_token')
       const res = await fetch('/api/v1/usage/summary', {
         headers: {
           'Content-Type': 'application/json',
@@ -67,9 +67,19 @@ export function UserUsageDashboard() {
   return (
     <div className="container-fluid py-4 px-4 overflow-y-auto">
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <h4 className="fw-bold mb-1">Your Account Usage</h4>
-          <p className="text-secondary small mb-0">Real persisted usage metrics, token consumption, and storage tracking.</p>
+        <div className="d-flex align-items-center gap-3">
+          <img
+            src="/assets/bot-usage-insights.png"
+            alt="Usage Insights"
+            width={52}
+            height={66}
+            className="rounded-3 shadow-sm border border-subtle d-none d-sm-block flex-shrink-0"
+            style={{ objectFit: 'contain', backgroundColor: 'var(--surface-hover)' }}
+          />
+          <div>
+            <h4 className="fw-bold mb-1">Your Account Usage & Telemetry</h4>
+            <p className="text-secondary small mb-0">Real persisted usage metrics, token consumption, and storage tracking.</p>
+          </div>
         </div>
         <button className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onClick={fetchUsage}>
           <RefreshCw size={14} /> Refresh

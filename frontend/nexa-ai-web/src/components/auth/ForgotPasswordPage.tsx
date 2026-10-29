@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { BrandLogo } from '../common/BrandLogo.tsx'
 import { authService } from '../../services/authService.ts'
 import { ErrorBanner } from '../common/ErrorBanner.tsx'
 import type { AppRoute } from '../../types/index.ts'
@@ -29,69 +30,77 @@ export function ForgotPasswordPage({ onNavigate }: ForgotPasswordPageProps) {
   }
 
   return (
-    <div className="container py-5">
-      <div className="row justify-content-center">
-        <div className="col-12 col-md-6 col-lg-5 col-xl-4">
-          <div className="card shadow-sm border p-4">
-            <h2 className="fs-4 fw-bold mb-1">Reset password</h2>
-            <p className="text-secondary small mb-4">
-              Enter your email address and we'll send you instructions to reset your password.
-            </p>
+    <div className="container-xl d-flex align-items-center justify-content-center py-5 min-vh-100">
+      <div className="w-100" style={{ maxWidth: '420px' }}>
+        <div className="text-center mb-4">
+          <BrandLogo size="lg" onClick={() => onNavigate('home')} />
+          <h2 className="fs-4 fw-bold mt-3 mb-1 text-body">Forgot password</h2>
+          <p className="text-secondary small mb-0">Enter your email to receive recovery instructions.</p>
+        </div>
 
-            <ErrorBanner message={error} onDismiss={() => setError(null)} />
+        <div className="nexa-card p-4 p-md-4.5">
+          <ErrorBanner message={error} onDismiss={() => setError(null)} />
 
-            {sent ? (
-              <div className="text-center">
-                <div className="alert alert-success small mb-3">
-                  If an account exists for {email}, a reset link has been dispatched.
-                </div>
+          {sent ? (
+            <div className="text-center">
+              <div className="alert alert-success small mb-3">
+                If an account exists for <strong>{email}</strong>, password reset instructions and a verification code have been sent.
+              </div>
+              <div className="d-flex flex-column gap-2">
                 <button
                   type="button"
-                  className="btn btn-outline-primary w-100"
+                  className="nexa-btn-primary w-100 py-2.5"
+                  onClick={() => onNavigate('otp-verify')}
+                >
+                  Enter Verification OTP
+                </button>
+                <button
+                  type="button"
+                  className="nexa-btn-secondary w-100 py-2.5"
                   onClick={() => onNavigate('login')}
                 >
-                  Return to Sign in
+                  Back to Login
                 </button>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit}>
-                <div className="mb-3">
-                  <label className="form-label small fw-semibold" htmlFor="forgot-email">
-                    Email address
-                  </label>
-                  <input
-                    id="forgot-email"
-                    type="email"
-                    className="form-control"
-                    placeholder="name@example.com"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    disabled={loading}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="btn btn-primary w-100 py-2 d-flex align-items-center justify-content-center gap-2 mb-3"
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="d-flex flex-column gap-3">
+              <div>
+                <label className="form-label small fw-semibold text-body" htmlFor="forgot-email">
+                  Email address
+                </label>
+                <input
+                  id="forgot-email"
+                  type="email"
+                  className="nexa-input"
+                  placeholder="name@example.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
-                >
-                  {loading && <div className="spinner-border spinner-border-sm" role="status" />}
-                  <span>{loading ? 'Sending link...' : 'Send reset instructions'}</span>
-                </button>
+                />
+              </div>
 
-                <div className="text-center small">
-                  <button
-                    type="button"
-                    className="btn btn-link p-0 small text-decoration-none"
-                    onClick={() => onNavigate('login')}
-                  >
-                    Back to Sign in
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
+              <button
+                type="submit"
+                className="nexa-btn-primary w-100 py-2.5 mt-1"
+                disabled={loading}
+              >
+                {loading ? 'Sending instructions...' : 'Send reset instructions'}
+              </button>
+
+              <div className="text-center mt-3">
+                <button
+                  type="button"
+                  className="btn btn-link p-0 small text-decoration-none"
+                  style={{ color: 'var(--brand-primary)' }}
+                  onClick={() => onNavigate('login')}
+                >
+                  Remember your password? Login
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>
