@@ -5,20 +5,13 @@ import { request } from '../../services/apiClient.ts'
 import type { AppRoute } from '../../types/index.ts'
 
 export function VerifyEmailPage({ onNavigate }: { readonly onNavigate: (route: AppRoute) => void }) {
-  const [tokenInput, setTokenInput] = useState('')
+  const [tokenInput, setTokenInput] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('token') || ''
+  })
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState<string | null>(null)
-
-  useEffect(() => {
-    // Check if token was supplied in query params
-    const params = new URLSearchParams(window.location.search)
-    const token = params.get('token')
-    if (token) {
-      setTokenInput(token)
-      void verifyToken(token)
-    }
-  }, [])
 
   const verifyToken = async (tok: string) => {
     setLoading(true)
@@ -39,6 +32,31 @@ export function VerifyEmailPage({ onNavigate }: { readonly onNavigate: (route: A
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('token')
+    if (token) {
+      let active = true
+      request<{ message: string }>('/api/v1/auth/email/verify', {
+        method: 'POST',
+        body: JSON.stringify({ token: token.trim() }),
+      })
+        .then(() => {
+          if (!active) return
+          setStatus('success')
+          setMessage('Your email address has been successfully verified! You may now sign in.')
+        })
+        .catch((err: unknown) => {
+          if (!active) return
+          setStatus('error')
+          setMessage(err instanceof Error ? err.message : 'Invalid or expired verification link.')
+        })
+      return () => {
+        active = false
+      }
+    }
+  }, [])
 
   return (
     <div className="container-xl d-flex align-items-center justify-content-center py-5 min-vh-100">

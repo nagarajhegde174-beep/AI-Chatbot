@@ -14,7 +14,7 @@ export function DocumentsView() {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null)
-  const [docContent, setDocContent] = useState<{ textContent?: string; chunks?: any[] } | null>(null)
+  const [docContent, setDocContent] = useState<{ textContent?: string; chunks?: Array<{ sequenceNumber?: number; tokenCount?: number; content?: string }> } | null>(null)
   const [loadingContent, setLoadingContent] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -24,9 +24,9 @@ export function DocumentsView() {
     setError(null)
     try {
       const q = query ? `?q=${encodeURIComponent(query)}` : ''
-      const res = await request<any>(`/api/v1/documents${q}`)
+      const res = await request<{ content?: DocumentItem[] } | DocumentItem[]>(`/api/v1/documents${q}`)
       // Spring Data Page returns content array
-      const list: DocumentItem[] = res.content || (Array.isArray(res) ? res : [])
+      const list: DocumentItem[] = Array.isArray(res) ? res : (res.content || [])
       setDocuments(list)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load documents library.')
@@ -36,7 +36,22 @@ export function DocumentsView() {
   }
 
   useEffect(() => {
-    void fetchDocuments()
+    let active = true
+    request<{ content?: DocumentItem[] } | DocumentItem[]>('/api/v1/documents')
+      .then((res) => {
+        if (!active) return
+        const list: DocumentItem[] = Array.isArray(res) ? res : (res.content ?? [])
+        setDocuments(list)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (!active) return
+        setError(err instanceof Error ? err.message : 'Failed to load documents library.')
+        setLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -105,7 +120,7 @@ export function DocumentsView() {
     setSelectedDoc(doc)
     setLoadingContent(true)
     try {
-      const data = await request<any>(`/api/v1/documents/${doc.id}/content`)
+      const data = await request<{ textContent?: string; chunks?: Array<{ sequenceNumber?: number; tokenCount?: number; content?: string }> }>(`/api/v1/documents/${doc.id}/content`)
       setDocContent(data)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to retrieve document content.')

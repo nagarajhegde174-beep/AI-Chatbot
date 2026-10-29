@@ -1,6 +1,8 @@
 import { BrandLogo } from '../common/BrandLogo.tsx'
 import type { AppRoute } from '../../types/index.ts'
 
+const CURRENT_YEAR = new Date().getFullYear()
+
 export function PublicFooter({ onNavigate }: { readonly onNavigate: (route: AppRoute) => void }) {
   return (
     <footer className="border-top border-subtle bg-base py-5 mt-auto">
@@ -111,7 +113,7 @@ export function PublicFooter({ onNavigate }: { readonly onNavigate: (route: AppR
         </div>
 
         <div className="pt-4 border-top border-subtle d-flex flex-column flex-sm-row align-items-center justify-content-between gap-2 small text-muted">
-          <div>© {new Date().getFullYear()} NexaAI. All rights reserved.</div>
+          <div>© {CURRENT_YEAR} NexaAI. All rights reserved.</div>
           <div className="d-flex align-items-center gap-3">
             <span>Inter & JetBrains Mono</span>
             <span>•</span>

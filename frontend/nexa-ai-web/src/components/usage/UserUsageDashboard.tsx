@@ -23,15 +23,39 @@ export function UserUsageDashboard() {
       }
       const data: UserUsageData = await res.json()
       setUsage(data)
-    } catch (err: any) {
-      setError(err.message || 'Error fetching usage')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error fetching usage')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchUsage()
+    let active = true
+    const token = localStorage.getItem('nexa_access_token') || localStorage.getItem('access_token') || sessionStorage.getItem('access_token')
+    fetch('/api/v1/usage/summary', {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load usage data: ' + res.statusText)
+        return res.json() as Promise<UserUsageData>
+      })
+      .then((data) => {
+        if (!active) return
+        setUsage(data)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (!active) return
+        setError(err instanceof Error ? err.message : 'Error fetching usage')
+        setLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   if (loading) {

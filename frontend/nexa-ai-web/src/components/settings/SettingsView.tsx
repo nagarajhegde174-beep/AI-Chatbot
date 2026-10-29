@@ -6,7 +6,7 @@ import {
 import { useAuth } from '../../context/AuthContext.tsx'
 import { useTheme } from '../../context/ThemeContext.tsx'
 import { request } from '../../services/apiClient.ts'
-import type { AppRoute } from '../../types/index.ts'
+import type { AppRoute, User as AuthUser } from '../../types/index.ts'
 
 export function SettingsView({ onNavigate }: { readonly onNavigate: (route: AppRoute) => void }) {
   const { user, setUser } = useAuth()
@@ -40,7 +40,7 @@ export function SettingsView({ onNavigate }: { readonly onNavigate: (route: AppR
 
     try {
       // Backend: PATCH /api/v1/users/me { displayName }
-      const res = await request<any>('/api/v1/users/me', {
+      const res = await request<AuthUser>('/api/v1/users/me', {
         method: 'PATCH',
         body: JSON.stringify({ displayName }),
       })

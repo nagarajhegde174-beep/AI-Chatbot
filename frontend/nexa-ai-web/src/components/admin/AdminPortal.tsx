@@ -15,17 +15,107 @@ type AdminTab =
   | 'system'
   | 'audit-logs'
 
+interface AdminUser {
+  id?: string
+  userId?: string
+  email: string
+  displayName?: string
+  status: string
+  subscriptionTier?: string
+  tokensUsed?: number
+  createdAt?: string
+}
+
+interface AdminUserBreakdown {
+  userId: string
+  queryCount?: number
+  totalTokens?: number
+  avgLatencyMs?: number
+}
+
+interface AdminConversationMonitoring {
+  todayCount?: number
+  yesterdayCount?: number
+  olderCount?: number
+  userBreakdown?: AdminUserBreakdown[]
+  recentQueries?: Array<{
+    id: string
+    userEmail?: string
+    query: string
+    timestamp: string
+    model?: string
+  }>
+}
+
+interface AdminModelItem {
+  name?: string
+  modelName: string
+  provider: string
+  enabled: boolean
+  isDefault: boolean
+  health?: string
+  usageCount?: number
+  requestCount?: number
+  errorCount?: number
+}
+
+interface AdminRagDoc {
+  documentId: string
+  filename?: string
+  userId?: string
+  chunkCount?: number
+  status: string
+  failureCount?: number
+}
+
+interface AdminRagData {
+  totalDocuments?: number
+  totalChunks?: number
+  totalEmbeddings?: number
+  failedCount?: number
+  documents?: AdminRagDoc[]
+}
+
+interface AdminAnalyticsModelRow {
+  model: string
+  provider: string
+  requests: number
+  tokens: number
+  latencyMs?: number
+  estimatedCostUsd?: number
+}
+
+interface AdminAnalyticsData {
+  totalRequests: number
+  totalTokens: number
+  avgLatencyMs: number
+  errorRate: number
+  estimatedCostUsd: number
+  totalEstimatedCostUsd?: number
+  modelBreakdown?: AdminAnalyticsModelRow[]
+}
+
+interface AdminAuditLog {
+  id: string
+  event: string
+  actor: string
+  target: string
+  status: string
+  timestamp: string
+  ip: string
+}
+
 export function AdminPortal() {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard')
   const [overview, setOverview] = useState<AdminOverviewData | null>(null)
-  const [users, setUsers] = useState<any[]>([])
+  const [users, setUsers] = useState<AdminUser[]>([])
   const [userSearch, setUserSearch] = useState('')
   const [userStatusFilter, setUserStatusFilter] = useState('')
-  const [conversations, setConversations] = useState<any | null>(null)
-  const [models, setModels] = useState<any[]>([])
-  const [ragData, setRagData] = useState<any | null>(null)
-  const [analyticsData, setAnalyticsData] = useState<any | null>(null)
-  const [auditLogs, setAuditLogs] = useState<any[]>([])
+  const [conversations, setConversations] = useState<AdminConversationMonitoring | null>(null)
+  const [models, setModels] = useState<AdminModelItem[]>([])
+  const [ragData, setRagData] = useState<AdminRagData | null>(null)
+  const [analyticsData, setAnalyticsData] = useState<AdminAnalyticsData | null>(null)
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([])
   const [auditFilter, setAuditFilter] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,8 +136,8 @@ export function AdminPortal() {
     try {
       const res = await fetch('/api/v1/admin/overview', { headers: getHeaders() })
       if (res.ok) setOverview(await res.json())
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -62,8 +152,8 @@ export function AdminPortal() {
         const data = await res.json()
         setUsers(data.content || (Array.isArray(data) ? data : []))
       }
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -71,8 +161,8 @@ export function AdminPortal() {
     try {
       const res = await fetch('/api/v1/admin/conversations/monitoring', { headers: getHeaders() })
       if (res.ok) setConversations(await res.json())
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -80,8 +170,8 @@ export function AdminPortal() {
     try {
       const res = await fetch('/api/v1/admin/models', { headers: getHeaders() })
       if (res.ok) setModels(await res.json())
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -89,8 +179,8 @@ export function AdminPortal() {
     try {
       const res = await fetch('/api/v1/admin/rag/monitoring', { headers: getHeaders() })
       if (res.ok) setRagData(await res.json())
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -98,8 +188,8 @@ export function AdminPortal() {
     try {
       const res = await fetch('/api/v1/admin/analytics', { headers: getHeaders() })
       if (res.ok) setAnalyticsData(await res.json())
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -116,8 +206,8 @@ export function AdminPortal() {
   }
 
   const loadTabData = (tab: AdminTab) => {
-    setLoading(true)
     setError(null)
+    setLoading(true)
     const p =
       tab === 'dashboard'
         ? fetchOverview()
@@ -137,8 +227,48 @@ export function AdminPortal() {
   }
 
   useEffect(() => {
-    loadTabData(activeTab)
-  }, [activeTab])
+    let isMounted = true
+    const run = async () => {
+      try {
+        if (activeTab === 'dashboard') {
+          const res = await fetch('/api/v1/admin/overview', { headers: getHeaders() })
+          if (res.ok && isMounted) setOverview(await res.json())
+        } else if (activeTab === 'users') {
+          const params = new URLSearchParams()
+          if (userSearch) params.append('query', userSearch)
+          if (userStatusFilter) params.append('status', userStatusFilter)
+          const q = params.toString() ? `?${params.toString()}` : ''
+          const res = await fetch(`/api/v1/admin/users${q}`, { headers: getHeaders() })
+          if (res.ok && isMounted) {
+            const data = await res.json()
+            setUsers(data.content || (Array.isArray(data) ? data : []))
+          }
+        } else if (activeTab === 'conversations') {
+          const res = await fetch('/api/v1/admin/conversations/monitoring', { headers: getHeaders() })
+          if (res.ok && isMounted) setConversations(await res.json())
+        } else if (activeTab === 'models') {
+          const res = await fetch('/api/v1/admin/models', { headers: getHeaders() })
+          if (res.ok && isMounted) setModels(await res.json())
+        } else if (activeTab === 'rag') {
+          const res = await fetch('/api/v1/admin/rag/monitoring', { headers: getHeaders() })
+          if (res.ok && isMounted) setRagData(await res.json())
+        } else if (activeTab === 'analytics') {
+          const res = await fetch('/api/v1/admin/analytics', { headers: getHeaders() })
+          if (res.ok && isMounted) setAnalyticsData(await res.json())
+        } else if (activeTab === 'audit-logs') {
+          if (isMounted) fetchAuditLogs()
+        }
+      } catch (e: unknown) {
+        if (isMounted) setError(e instanceof Error ? e.message : 'An error occurred')
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+    void run()
+    return () => {
+      isMounted = false
+    }
+  }, [activeTab, userSearch, userStatusFilter])
 
   const handleUpdateUserStatus = async (userId: string, newStatus: string) => {
     try {
@@ -148,8 +278,8 @@ export function AdminPortal() {
         body: JSON.stringify({ status: newStatus }),
       })
       if (res.ok) fetchUsers()
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -161,8 +291,8 @@ export function AdminPortal() {
         body: JSON.stringify({ enabled: !currentEnabled }),
       })
       if (res.ok) fetchModels()
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -173,8 +303,8 @@ export function AdminPortal() {
         headers: getHeaders(),
       })
       if (res.ok) fetchModels()
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -185,8 +315,8 @@ export function AdminPortal() {
         headers: getHeaders(),
       })
       if (res.ok) fetchRag()
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -198,8 +328,8 @@ export function AdminPortal() {
         headers: getHeaders(),
       })
       if (res.ok) fetchRag()
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "An error occurred")
     }
   }
 
@@ -507,7 +637,7 @@ export function AdminPortal() {
                               <button
                                 type="button"
                                 className="btn btn-outline-success btn-sm"
-                                onClick={() => handleUpdateUserStatus(u.userId || u.id, 'ACTIVE')}
+                                onClick={() => handleUpdateUserStatus(u.userId || u.id || "", 'ACTIVE')}
                               >
                                 Activate
                               </button>
@@ -516,7 +646,7 @@ export function AdminPortal() {
                               <button
                                 type="button"
                                 className="btn btn-outline-warning btn-sm"
-                                onClick={() => handleUpdateUserStatus(u.userId || u.id, 'SUSPENDED')}
+                                onClick={() => handleUpdateUserStatus(u.userId || u.id || "", 'SUSPENDED')}
                               >
                                 Suspend
                               </button>
@@ -588,7 +718,7 @@ export function AdminPortal() {
                           </tr>
                         </thead>
                         <tbody>
-                          {conversations.userBreakdown.map((ub: any) => (
+                          {conversations?.userBreakdown?.map((ub: AdminUserBreakdown) => (
                             <tr key={ub.userId}>
                               <td className="font-monospace small">{ub.userId}</td>
                               <td className="text-end font-monospace">{ub.queryCount}</td>
@@ -708,7 +838,7 @@ export function AdminPortal() {
                 </thead>
                 <tbody>
                   {ragData?.documents && ragData.documents.length > 0 ? (
-                    ragData.documents.map((d: any) => (
+                    ragData.documents.map((d: AdminRagDoc) => (
                       <tr key={d.documentId}>
                         <td>
                           <div className="fw-semibold text-body font-monospace small">{d.filename || d.documentId}</div>
@@ -808,7 +938,7 @@ export function AdminPortal() {
                     </tr>
                   </thead>
                   <tbody>
-                    {analyticsData.modelBreakdown.map((row: any) => (
+                    {analyticsData?.modelBreakdown?.map((row: AdminAnalyticsModelRow) => (
                       <tr key={row.model}>
                         <td><span className="nexa-badge nexa-badge-subtle">{row.provider}</span></td>
                         <td className="font-monospace fw-semibold">{row.model}</td>

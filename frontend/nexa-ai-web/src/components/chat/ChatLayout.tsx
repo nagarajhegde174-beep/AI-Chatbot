@@ -30,7 +30,6 @@ export function ChatLayout() {
   }
 
   const loadConversations = useCallback(async () => {
-    setLoadingConversations(true)
     try {
       const list = await chatService.listConversations(showArchived ? true : false)
       setConversations(list)
@@ -38,6 +37,7 @@ export function ChatLayout() {
         const first = list[0]
         if (first) {
           setActiveId(first.id)
+          if (first.model) setSelectedModel(first.model)
         }
       }
     } catch (err: unknown) {
@@ -48,18 +48,34 @@ export function ChatLayout() {
   }, [showArchived, activeId])
 
   useEffect(() => {
-    void loadConversations()
-  }, [loadConversations])
+    let isMounted = true
+    chatService.listConversations(showArchived ? true : false)
+      .then((list) => {
+        if (!isMounted) return
+        setConversations(list)
+        if (list.length > 0 && !activeId) {
+          const first = list[0]
+          if (first) {
+            setActiveId(first.id)
+            if (first.model) setSelectedModel(first.model)
+          }
+        }
+        setLoadingConversations(false)
+      })
+      .catch((err: unknown) => {
+        if (!isMounted) return
+        setError(err instanceof Error ? err.message : 'Failed to load conversations.')
+        setLoadingConversations(false)
+      })
+    return () => {
+      isMounted = false
+    }
+  }, [showArchived, activeId])
 
   useEffect(() => {
-    if (!activeId) {
-      setMessages([])
-      return
-    }
+    if (!activeId) return
 
     let isMounted = true
-    setLoadingMessages(true)
-
     chatService
       .listMessages(activeId)
       .then((res) => {
@@ -140,14 +156,7 @@ export function ChatLayout() {
     }
   }
 
-  useEffect(() => {
-    if (activeId) {
-      const active = conversations.find((c) => c.id === activeId)
-      if (active?.model) {
-        setSelectedModel(active.model)
-      }
-    }
-  }, [activeId, conversations])
+
 
   const handleStopGeneration = () => {
     if (streamController) {

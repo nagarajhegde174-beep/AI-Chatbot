@@ -54,7 +54,15 @@ export function PricingBillingView({ onNavigate }: { readonly onNavigate: (route
   }
 
   useEffect(() => {
-    void loadUsage()
+    let active = true
+    request<UserUsageData>('/api/v1/usage/summary')
+      .then((data) => {
+        if (active) setUsage(data)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
   }, [])
 
   const currentTier = usage?.subscriptionStatus?.tier || 'NORMAL'

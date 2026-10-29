@@ -38,8 +38,6 @@ export function UserDashboard({ onNavigate, onSelectConversation }: UserDashboar
   ]
 
   const loadData = async () => {
-    setLoading(true)
-    setError(null)
     try {
       const [usageData, convList] = await Promise.all([
         request<UserUsageData>('/api/v1/usage/summary'),
@@ -47,6 +45,7 @@ export function UserDashboard({ onNavigate, onSelectConversation }: UserDashboar
       ])
       setUsage(usageData)
       setRecentConversations(convList.slice(0, 5))
+      setError(null)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load usage statistics.')
     } finally {
@@ -55,7 +54,28 @@ export function UserDashboard({ onNavigate, onSelectConversation }: UserDashboar
   }
 
   useEffect(() => {
-    void loadData()
+    let active = true
+    Promise.all([
+      request<UserUsageData>('/api/v1/usage/summary'),
+      chatService.listConversations(false),
+    ])
+      .then(([usageData, convList]) => {
+        if (active) {
+          setUsage(usageData)
+          setRecentConversations(convList.slice(0, 5))
+          setError(null)
+          setLoading(false)
+        }
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setError(err instanceof Error ? err.message : 'Failed to load usage statistics.')
+          setLoading(false)
+        }
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   const handleStartPrompt = async (promptText: string) => {
