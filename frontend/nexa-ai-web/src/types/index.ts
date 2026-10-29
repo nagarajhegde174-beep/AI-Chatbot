@@ -52,9 +52,39 @@ export interface Message {
   readonly updatedAt: string
 }
 
-export type Theme = 'light' | 'dark'
+export type Theme = 'light' | 'dark' | 'system'
 
-export type AppRoute = 'login' | 'register' | 'forgot-password' | 'chat' | 'usage' | 'admin'
+export type AppRoute =
+  | 'home'
+  | 'pricing'
+  | 'faq'
+  | 'login'
+  | 'register'
+  | 'verify-email'
+  | 'forgot-password'
+  | 'otp-verify'
+  | 'reset-password'
+  | 'change-password'
+  | 'app'
+  | 'chat'
+  | 'documents'
+  | 'usage'
+  | 'billing'
+  | 'settings'
+  | 'admin'
+
+export interface DocumentItem {
+  readonly id: string
+  readonly filename: string
+  readonly originalFilename: string
+  readonly contentType: string
+  readonly sizeBytes: number
+  readonly status: 'UPLOADED' | 'EXTRACTING' | 'CHUNKING' | 'EMBEDDING' | 'READY' | 'FAILED'
+  readonly chunkCount?: number
+  readonly errorMessage?: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
 
 export interface UserUsageData {
   readonly aiRequests: number
@@ -105,4 +135,3 @@ export interface AdminOverviewData {
   readonly subscriptionStatistics: Record<string, number>
   readonly totalEstimatedAiCostUsd: number
 }
-

@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { AlertCircle, Bot, Check, Copy, Edit2, RotateCw, ThumbsDown, ThumbsUp, User as UserIcon } from 'lucide-react'
+import {
+  AlertCircle, Check, Copy, Edit2, RotateCw,
+  ThumbsDown, ThumbsUp, User as UserIcon
+} from 'lucide-react'
 import type { FeedbackType, Message } from '../../types/index.ts'
 import { MarkdownRenderer } from './MarkdownRenderer.tsx'
 
@@ -55,43 +58,56 @@ export function MessageItem({
     <div className={`d-flex gap-3 mb-4 ${isUser ? 'justify-content-end' : 'justify-content-start'}`}>
       {!isUser && (
         <div
-          className="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center flex-shrink-0"
-          style={{ width: '34px', height: '34px' }}
+          className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 overflow-hidden shadow-sm"
+          style={{
+            width: '34px',
+            height: '34px',
+            border: '1.5px solid var(--border-subtle)',
+            backgroundColor: 'var(--surface-card)',
+          }}
         >
-          <Bot size={18} />
+          <img
+            src="/assets/nexa-avatar.png"
+            alt="NexaAI Assistant"
+            width={34}
+            height={34}
+            style={{ objectFit: 'cover' }}
+          />
         </div>
       )}
 
       <div
-        className={`card border shadow-none ${
-          isUser ? 'bg-primary-subtle border-primary-subtle' : 'bg-body border'
+        className={`nexa-card ${
+          isUser
+            ? 'bg-surface-hover border-subtle'
+            : 'bg-surface border-subtle'
         }`}
-        style={{ maxWidth: '85%', minWidth: '220px' }}
+        style={{ maxWidth: '82%', minWidth: '240px' }}
       >
-        <div className="card-header bg-transparent border-0 d-flex align-items-center justify-content-between py-1 px-3">
+        <div className="d-flex align-items-center justify-content-between py-2 px-3.5 border-bottom border-subtle">
           <div className="d-flex align-items-center gap-2">
-            <span className="fw-semibold small">{isUser ? 'You' : 'NexaAI Assistant'}</span>
+            <span className="fw-semibold small text-body">{isUser ? 'You' : 'NexaAI'}</span>
             {!isUser && message.model && (
-              <span className="badge text-bg-secondary-subtle border small text-secondary py-0 px-1" style={{ fontSize: '0.68rem' }}>
+              <span className="nexa-badge nexa-badge-subtle font-monospace" style={{ fontSize: '0.68rem' }}>
                 {message.model}
               </span>
             )}
             {message.isRegenerated && (
-              <span className="badge text-bg-info-subtle border small text-info py-0 px-1" style={{ fontSize: '0.68rem' }}>
+              <span className="nexa-badge nexa-badge-brand" style={{ fontSize: '0.68rem' }}>
                 Regenerated
               </span>
             )}
           </div>
-          <span className="text-secondary small" style={{ fontSize: '0.72rem' }}>
+          <span className="text-muted small font-monospace" style={{ fontSize: '0.72rem' }}>
             {timeString}
           </span>
         </div>
 
-        <div className="card-body py-2 px-3">
+        <div className="py-2.5 px-3.5">
           {isEditing ? (
             <div>
               <textarea
-                className="form-control mb-2"
+                className="nexa-input mb-2"
                 rows={3}
                 value={editContent}
                 disabled={submitting}
@@ -100,7 +116,7 @@ export function MessageItem({
               <div className="d-flex justify-content-end gap-2">
                 <button
                   type="button"
-                  className="btn btn-sm btn-outline-secondary"
+                  className="nexa-btn-secondary py-1 px-2.5 small"
                   disabled={submitting}
                   onClick={() => {
                     setIsEditing(false)
@@ -111,7 +127,7 @@ export function MessageItem({
                 </button>
                 <button
                   type="button"
-                  className="btn btn-sm btn-primary"
+                  className="nexa-btn-primary py-1 px-2.5 small"
                   disabled={submitting}
                   onClick={handleSaveEdit}
                 >
@@ -120,52 +136,62 @@ export function MessageItem({
               </div>
             </div>
           ) : isUser ? (
-            <div className="text-break" style={{ whiteSpace: 'pre-wrap' }}>
+            <div className="text-break text-body" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
               {message.content}
             </div>
           ) : (
             <div>
               {message.status === 'FAILED' && (
                 <div className="text-danger d-flex align-items-center gap-2 mb-2 small">
-                  <AlertCircle size={16} />
-                  <span>Failed to generate response</span>
+                  <AlertCircle size={15} />
+                  <span>Failed to generate response. Please retry.</span>
                 </div>
               )}
+
+              {/* AI Thinking: subtle breathing 3-dot indicator */}
+              {(message.status === 'IN_PROGRESS' || message.status === 'PENDING') && !message.content && (
+                <div className="nexa-thinking-indicator py-1 my-1">
+                  <span className="dot" />
+                  <span className="dot" />
+                  <span className="dot" />
+                  <span className="ms-1 small">Thinking...</span>
+                </div>
+              )}
+
+              {/* Rendered Markdown Content */}
               {message.content ? (
-                <MarkdownRenderer content={message.content} />
-              ) : message.status === 'IN_PROGRESS' || message.status === 'PENDING' ? (
-                <div className="text-secondary small d-flex align-items-center gap-2 py-1">
-                  <div className="spinner-border spinner-border-sm text-primary" role="status" />
-                  <span>Thinking...</span>
+                <div>
+                  <MarkdownRenderer content={message.content} />
+                  {/* Subtle Caret while streaming */}
+                  {message.status === 'IN_PROGRESS' && (
+                    <span className="nexa-streaming-caret" aria-hidden="true" />
+                  )}
                 </div>
               ) : null}
-              {(message.status === 'IN_PROGRESS' || message.status === 'PENDING') && message.content && (
-                <span className="spinner-grow spinner-grow-sm text-primary ms-1 align-baseline" role="status" style={{ width: '0.5rem', height: '0.5rem' }} />
-              )}
             </div>
           )}
         </div>
 
         {!isEditing && (
-          <div className="card-footer bg-transparent border-0 d-flex align-items-center justify-content-between py-1 px-3">
+          <div className="d-flex align-items-center justify-content-between py-1.5 px-3.5 border-top border-subtle">
             <div className="d-flex align-items-center gap-2">
               <button
                 type="button"
-                className="btn btn-sm btn-link p-0 text-secondary text-decoration-none"
+                className="btn btn-sm btn-ghost p-1 text-secondary"
                 onClick={handleCopy}
-                title="Copy message"
+                title="Copy message text"
               >
-                {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
               </button>
 
               {isUser && onEdit && (
                 <button
                   type="button"
-                  className="btn btn-sm btn-link p-0 text-secondary text-decoration-none"
+                  className="btn btn-sm btn-ghost p-1 text-secondary"
                   onClick={() => setIsEditing(true)}
                   title="Edit and resend"
                 >
-                  <Edit2 size={14} />
+                  <Edit2 size={13} />
                 </button>
               )}
 
@@ -173,29 +199,29 @@ export function MessageItem({
                 <>
                   <button
                     type="button"
-                    className={`btn btn-sm btn-link p-0 text-decoration-none ${
+                    className={`btn btn-sm btn-ghost p-1 ${
                       message.feedback === 'THUMBS_UP' ? 'text-success' : 'text-secondary'
                     }`}
                     onClick={() => void onFeedback(message.id, 'THUMBS_UP')}
                     title="Helpful response"
                   >
-                    <ThumbsUp size={14} />
+                    <ThumbsUp size={13} />
                   </button>
                   <button
                     type="button"
-                    className={`btn btn-sm btn-link p-0 text-decoration-none ${
+                    className={`btn btn-sm btn-ghost p-1 ${
                       message.feedback === 'THUMBS_DOWN' ? 'text-danger' : 'text-secondary'
                     }`}
                     onClick={() => void onFeedback(message.id, 'THUMBS_DOWN')}
-                    title="Not helpful"
+                    title="Not helpful response"
                   >
-                    <ThumbsDown size={14} />
+                    <ThumbsDown size={13} />
                   </button>
                 </>
               )}
 
               {!isUser && Boolean(message.totalTokens) && (
-                <span className="text-secondary opacity-75 small" style={{ fontSize: '0.68rem' }}>
+                <span className="text-muted small font-monospace" style={{ fontSize: '0.68rem' }}>
                   {message.totalTokens} tokens
                 </span>
               )}
@@ -205,7 +231,7 @@ export function MessageItem({
               {!isUser && (onRetry || onRegenerate) && (
                 <button
                   type="button"
-                  className="btn btn-sm btn-link p-0 text-secondary text-decoration-none d-flex align-items-center gap-1 small"
+                  className="btn btn-sm btn-ghost p-1 text-secondary d-inline-flex align-items-center gap-1 small"
                   onClick={() => {
                     if (onRetry) {
                       void onRetry(message.id)
@@ -228,10 +254,15 @@ export function MessageItem({
 
       {isUser && (
         <div
-          className="rounded-circle bg-secondary-subtle text-secondary d-flex align-items-center justify-content-center flex-shrink-0"
-          style={{ width: '34px', height: '34px' }}
+          className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+          style={{
+            width: '32px',
+            height: '32px',
+            backgroundColor: 'var(--surface-hover)',
+            color: 'var(--text-secondary)',
+          }}
         >
-          <UserIcon size={18} />
+          <UserIcon size={16} />
         </div>
       )}
     </div>

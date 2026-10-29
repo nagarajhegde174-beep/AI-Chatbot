@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Download, Menu, Sparkles, Trash2 } from 'lucide-react'
+import { Download, Menu, Trash2 } from 'lucide-react'
 import { Sidebar } from './Sidebar.tsx'
 import { MessageItem } from './MessageItem.tsx'
 import { MessageInput } from './MessageInput.tsx'
@@ -30,7 +30,6 @@ export function ChatLayout() {
   }
 
   const loadConversations = useCallback(async () => {
-    setLoadingConversations(true)
     try {
       const list = await chatService.listConversations(showArchived ? true : false)
       setConversations(list)
@@ -38,6 +37,7 @@ export function ChatLayout() {
         const first = list[0]
         if (first) {
           setActiveId(first.id)
+          if (first.model) setSelectedModel(first.model)
         }
       }
     } catch (err: unknown) {
@@ -48,18 +48,34 @@ export function ChatLayout() {
   }, [showArchived, activeId])
 
   useEffect(() => {
-    void loadConversations()
-  }, [loadConversations])
+    let isMounted = true
+    chatService.listConversations(showArchived ? true : false)
+      .then((list) => {
+        if (!isMounted) return
+        setConversations(list)
+        if (list.length > 0 && !activeId) {
+          const first = list[0]
+          if (first) {
+            setActiveId(first.id)
+            if (first.model) setSelectedModel(first.model)
+          }
+        }
+        setLoadingConversations(false)
+      })
+      .catch((err: unknown) => {
+        if (!isMounted) return
+        setError(err instanceof Error ? err.message : 'Failed to load conversations.')
+        setLoadingConversations(false)
+      })
+    return () => {
+      isMounted = false
+    }
+  }, [showArchived, activeId])
 
   useEffect(() => {
-    if (!activeId) {
-      setMessages([])
-      return
-    }
+    if (!activeId) return
 
     let isMounted = true
-    setLoadingMessages(true)
-
     chatService
       .listMessages(activeId)
       .then((res) => {
@@ -140,14 +156,7 @@ export function ChatLayout() {
     }
   }
 
-  useEffect(() => {
-    if (activeId) {
-      const active = conversations.find((c) => c.id === activeId)
-      if (active?.model) {
-        setSelectedModel(active.model)
-      }
-    }
-  }, [activeId, conversations])
+
 
   const handleStopGeneration = () => {
     if (streamController) {
@@ -480,32 +489,84 @@ export function ChatLayout() {
 
         {/* Message List */}
         <div className="flex-grow-1 overflow-y-auto p-3 p-md-4">
-          {loadingMessages && <LoadingSpinner message="Loading chat history..." />}
+          {loadingMessages && <LoadingSpinner withBot message="Loading conversation history..." />}
 
           {!loadingMessages && messages.length === 0 && (
-            <div className="h-100 d-flex flex-column align-items-center justify-content-center text-center p-4 text-secondary">
-              <div className="rounded-circle bg-primary-subtle text-primary p-3 mb-3">
-                <Sparkles size={28} />
+            <div className="h-100 d-flex flex-column align-items-center justify-content-center text-center p-4">
+              <div className="position-relative mb-3">
+                <img
+                  src="/assets/nexa-bot-mascot.png"
+                  alt="NexaAI Assistant"
+                  width={110}
+                  height={110}
+                  className="rounded-circle shadow-sm border border-subtle"
+                  style={{ objectFit: 'cover' }}
+                />
+                <span
+                  className="position-absolute bottom-0 end-0 nexa-badge nexa-badge-secondary"
+                  style={{ transform: 'translate(10%, 10%)' }}
+                >
+                  Online
+                </span>
               </div>
-              <h3 className="fs-5 fw-bold mb-1 text-body">Start a new conversation</h3>
-              <p className="small mb-3" style={{ maxWidth: '420px' }}>
-                Select a model from the top bar and ask anything. Spring AI Model Router provides multi-provider fallback and streaming token rendering.
+
+              <h3 className="fs-4 fw-bold mb-1 text-body">How can NexaAI assist you today?</h3>
+              <p className="text-secondary small mb-4" style={{ maxWidth: '480px' }}>
+                Ask complex questions, synthesize code, or ground your queries in private documents using our multi-model AI workspace.
               </p>
-              <div className="d-flex flex-wrap gap-2 justify-content-center">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-secondary"
-                  onClick={() => void handleSendMessage('What are the core capabilities of NexaAI?')}
-                >
-                  "What are the core capabilities of NexaAI?"
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-secondary"
-                  onClick={() => void handleSendMessage('Explain the microservices architecture.')}
-                >
-                  "Explain the microservices architecture."
-                </button>
+
+              <div className="row g-2 w-100 justify-content-center" style={{ maxWidth: '640px' }}>
+                <div className="col-12 col-sm-6">
+                  <button
+                    type="button"
+                    className="nexa-card p-3 w-100 text-start bg-surface border-subtle d-flex flex-column gap-1"
+                    onClick={() => void handleSendMessage('What are the core microservices and architectural principles of NexaAI?')}
+                  >
+                    <div className="fw-semibold small text-body">Architecture Overview</div>
+                    <div className="text-secondary small" style={{ fontSize: '0.78rem' }}>
+                      Explain the Spring Boot & Kafka microservices.
+                    </div>
+                  </button>
+                </div>
+
+                <div className="col-12 col-sm-6">
+                  <button
+                    type="button"
+                    className="nexa-card p-3 w-100 text-start bg-surface border-subtle d-flex flex-column gap-1"
+                    onClick={() => void handleSendMessage('How does pgvector HNSW vector indexing accelerate RAG semantic retrieval?')}
+                  >
+                    <div className="fw-semibold small text-body">Document RAG Retrieval</div>
+                    <div className="text-secondary small" style={{ fontSize: '0.78rem' }}>
+                      Explain embeddings & cosine similarity search.
+                    </div>
+                  </button>
+                </div>
+
+                <div className="col-12 col-sm-6">
+                  <button
+                    type="button"
+                    className="nexa-card p-3 w-100 text-start bg-surface border-subtle d-flex flex-column gap-1"
+                    onClick={() => void handleSendMessage('Compare OpenAI gpt-4o, Google Gemini, and Groq LLaMA models for code generation.')}
+                  >
+                    <div className="fw-semibold small text-body">Multi-Model Comparison</div>
+                    <div className="text-secondary small" style={{ fontSize: '0.78rem' }}>
+                      Analyze latency, context size, and token costs.
+                    </div>
+                  </button>
+                </div>
+
+                <div className="col-12 col-sm-6">
+                  <button
+                    type="button"
+                    className="nexa-card p-3 w-100 text-start bg-surface border-subtle d-flex flex-column gap-1"
+                    onClick={() => void handleSendMessage('Draft an Architectural Decision Record (ADR) for event-driven analytics.')}
+                  >
+                    <div className="fw-semibold small text-body">Draft Technical ADR</div>
+                    <div className="text-secondary small" style={{ fontSize: '0.78rem' }}>
+                      Create structured engineering documentation.
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
           )}

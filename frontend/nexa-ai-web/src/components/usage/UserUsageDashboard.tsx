@@ -11,7 +11,7 @@ export function UserUsageDashboard() {
     setLoading(true)
     setError(null)
     try {
-      const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token')
+      const token = localStorage.getItem('nexa_access_token') || localStorage.getItem('access_token') || sessionStorage.getItem('access_token')
       const res = await fetch('/api/v1/usage/summary', {
         headers: {
           'Content-Type': 'application/json',
@@ -23,15 +23,39 @@ export function UserUsageDashboard() {
       }
       const data: UserUsageData = await res.json()
       setUsage(data)
-    } catch (err: any) {
-      setError(err.message || 'Error fetching usage')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error fetching usage')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchUsage()
+    let active = true
+    const token = localStorage.getItem('nexa_access_token') || localStorage.getItem('access_token') || sessionStorage.getItem('access_token')
+    fetch('/api/v1/usage/summary', {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load usage data: ' + res.statusText)
+        return res.json() as Promise<UserUsageData>
+      })
+      .then((data) => {
+        if (!active) return
+        setUsage(data)
+        setLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (!active) return
+        setError(err instanceof Error ? err.message : 'Error fetching usage')
+        setLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   if (loading) {
@@ -67,9 +91,19 @@ export function UserUsageDashboard() {
   return (
     <div className="container-fluid py-4 px-4 overflow-y-auto">
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <h4 className="fw-bold mb-1">Your Account Usage</h4>
-          <p className="text-secondary small mb-0">Real persisted usage metrics, token consumption, and storage tracking.</p>
+        <div className="d-flex align-items-center gap-3">
+          <img
+            src="/assets/bot-usage-insights.png"
+            alt="Usage Insights"
+            width={52}
+            height={66}
+            className="rounded-3 shadow-sm border border-subtle d-none d-sm-block flex-shrink-0"
+            style={{ objectFit: 'contain', backgroundColor: 'var(--surface-hover)' }}
+          />
+          <div>
+            <h4 className="fw-bold mb-1">Your Account Usage & Telemetry</h4>
+            <p className="text-secondary small mb-0">Real persisted usage metrics, token consumption, and storage tracking.</p>
+          </div>
         </div>
         <button className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onClick={fetchUsage}>
           <RefreshCw size={14} /> Refresh
