@@ -1,5 +1,6 @@
 package com.nexaai.auth.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import com.nexaai.auth.domain.entity.AuthUser;
 import com.nexaai.auth.domain.entity.PasswordResetToken;
 import com.nexaai.auth.domain.model.AccountStatus;
@@ -35,6 +36,8 @@ public class PasswordResetService {
     private final PasswordEncoder passwordEncoder;
     private final int expirationMinutes;
     private final SecureRandom secureRandom = new SecureRandom();
+    @Autowired(required = false)
+    private EventPublisher eventPublisher;
 
     public PasswordResetService(AuthUserRepository userRepository,
                                 PasswordResetTokenRepository resetTokenRepository,
@@ -103,6 +106,9 @@ public class PasswordResetService {
 
         // Revoke all existing refresh tokens for the user to force re-login
         refreshTokenRepository.revokeAllForUser(user, Instant.now());
+        if (eventPublisher != null) {
+            eventPublisher.publishPasswordChanged(user.getId(), user.getEmail(), null);
+        }
     }
 
     private String sha256(String input) {

@@ -7,6 +7,7 @@ import com.nexaai.analytics.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -27,6 +28,8 @@ public class AnalyticsKafkaConsumer {
     private final ModelRegistryStateRepository modelRepository;
     private final AiCostEstimator costEstimator;
     private final ObjectMapper objectMapper;
+    @Autowired(required = false)
+    private AuditLogService auditLogService;
 
     public AnalyticsKafkaConsumer(ProcessedEventRepository processedEventRepository,
                                   AiRequestMetricRepository metricRepository,
@@ -81,17 +84,57 @@ public class AnalyticsKafkaConsumer {
 
     private void dispatch(String eventType, JsonNode payload, String actorId, String subjectId) {
         switch (eventType) {
-            case "auth.user.login.v1", "USER_LOGIN" -> handleUserLogin(payload, actorId);
-            case "auth.user.registered.v1", "USER_REGISTERED" -> handleUserRegistered(payload, actorId);
-            case "user.status.changed.v1", "USER_STATUS_CHANGED" -> handleUserStatusChanged(payload, subjectId);
+            case "auth.user.login.v1", "USER_LOGIN" -> {
+                handleUserLogin(payload, actorId);
+                if (auditLogService != null) {
+                    auditLogService.logEvent(actorId != null ? actorId : payload.path("email").asText("user"), "USER_LOGIN", "auth-service", "SUCCESS", payload.path("ipAddress").asText(payload.path("ip").asText(null)), "User login");
+                }
+            }
+            case "auth.user.logout.v1", "USER_LOGOUT" -> {
+                if (auditLogService != null) {
+                    auditLogService.logEvent(actorId != null ? actorId : payload.path("email").asText("user"), "USER_LOGOUT", "auth-service", "SUCCESS", null, "User logout");
+                }
+            }
+            case "auth.user.password_changed.v1", "PASSWORD_CHANGED" -> {
+                if (auditLogService != null) {
+                    auditLogService.logEvent(actorId != null ? actorId : payload.path("email").asText("user"), "PASSWORD_CHANGE", "auth-service", "SUCCESS", null, "Password changed");
+                }
+            }
+            case "auth.security.event.v1", "SECURITY_EVENT" -> {
+                if (auditLogService != null) {
+                    auditLogService.logEvent(payload.path("actor").asText("system"), payload.path("eventType").asText("SECURITY_EVENT"), "auth-service", "ALERT", payload.path("ipAddress").asText(null), payload.path("details").asText(null));
+                }
+            }
+            case "auth.user.registered.v1", "USER_REGISTERED" -> {
+                handleUserRegistered(payload, actorId);
+                if (auditLogService != null) {
+                    auditLogService.logEvent(actorId != null ? actorId : payload.path("email").asText("user"), "USER_REGISTERED", "auth-service", "SUCCESS", null, "User registered");
+                }
+            }
+            case "user.status.changed.v1", "USER_STATUS_CHANGED" -> {
+                handleUserStatusChanged(payload, subjectId);
+                if (auditLogService != null) {
+                    auditLogService.logEvent("admin", "USER_STATUS_CHANGE", subjectId, "SUCCESS", null, "Status changed to " + payload.path("newStatus").asText());
+                }
+            }
             case "chat.message.sent.v1", "MESSAGE_SENT" -> handleChatMessageSent(payload, actorId);
             case "ai.inference.completed.v1", "AI_RESPONSE_GENERATED" -> handleAiInferenceCompleted(payload, actorId);
             case "document.uploaded.v1", "DOCUMENT_READY" -> handleDocumentUploaded(payload, actorId);
             case "document.chunked.v1", "DOCUMENT_CHUNKED" -> handleDocumentChunked(payload);
             case "document.indexed.v1", "DOCUMENT_INDEXED" -> handleDocumentIndexed(payload);
             case "document.processing.failed.v1", "DOCUMENT_PROCESSING_FAILED" -> handleDocumentFailed(payload);
-            case "document.deleted.v1", "DOCUMENT_DELETED" -> handleDocumentDeleted(payload);
-            case "subscription.changed.v1", "SUBSCRIPTION_CHANGED" -> handleSubscriptionChanged(payload, actorId);
+            case "document.deleted.v1", "DOCUMENT_DELETED" -> {
+                handleDocumentDeleted(payload);
+                if (auditLogService != null) {
+                    auditLogService.logEvent(payload.path("userId").asText("user"), "DOCUMENT_DELETED", payload.path("documentId").asText(), "SUCCESS", null, "Document deleted");
+                }
+            }
+            case "subscription.changed.v1", "SUBSCRIPTION_CHANGED" -> {
+                handleSubscriptionChanged(payload, actorId);
+                if (auditLogService != null) {
+                    auditLogService.logEvent(actorId != null ? actorId : "user", "SUBSCRIPTION_CHANGED", payload.path("planCode").asText("FREE"), "SUCCESS", null, "Subscription tier updated");
+                }
+            }
             default -> log.debug("Unhandled event type for analytics read model: {}", eventType);
         }
     }

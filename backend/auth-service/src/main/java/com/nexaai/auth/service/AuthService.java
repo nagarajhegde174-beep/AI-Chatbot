@@ -158,7 +158,9 @@ public class AuthService {
         }
 
         loginAttemptService.recordSuccess(request.email(), ipAddress);
-        return issueTokens(user);
+        AuthResponse response = issueTokens(user);
+        eventPublisher.publishUserLogin(user, null, ipAddress, null);
+        return response;
     }
 
     @Transactional(noRollbackFor = AuthException.class)
@@ -213,6 +215,7 @@ public class AuthService {
                 UUID userId = jwtTokenProvider.getUserIdFromClaims(claims);
                 Instant exp = jwtTokenProvider.getExpirationFromClaims(claims);
                 tokenRevocationService.revokeAccessToken(jti, userId, exp);
+                eventPublisher.publishUserLogout(userId, claims.getSubject(), false, null);
             } catch (Exception ignored) {
                 // Ignore invalid or already expired tokens on logout
             }
@@ -225,6 +228,7 @@ public class AuthService {
                 .orElseThrow(() -> new AuthException(ErrorCode.AUTH_USER_NOT_FOUND, "User not found.", HttpStatus.NOT_FOUND));
 
         refreshTokenRepository.revokeAllForUser(user, Instant.now());
+        eventPublisher.publishUserLogout(user.getId(), user.getEmail(), true, null);
 
         if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
             String jwt = bearerToken.substring(7);
@@ -255,6 +259,7 @@ public class AuthService {
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
 
+        eventPublisher.publishPasswordChanged(user.getId(), user.getEmail(), null);
         log.info("Password changed successfully for user: {}", user.getEmail());
     }
 

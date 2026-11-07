@@ -1,5 +1,8 @@
 package com.nexaai.auth.controller;
 
+import com.nexaai.auth.service.RedisRateLimiterService;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.time.Duration;
 import com.nexaai.auth.domain.entity.AuthUser;
 import com.nexaai.auth.dto.request.ChangePasswordRequest;
 import com.nexaai.auth.dto.request.ForgotPasswordRequest;
@@ -53,6 +56,8 @@ public class AuthController {
     private final PasswordResetService passwordResetService;
     private final GoogleOAuthService googleOAuthService;
     private final CookieService cookieService;
+    @Autowired(required = false)
+    private RedisRateLimiterService rateLimiterService;
 
     public AuthController(AuthService authService,
                           EmailVerificationService emailVerificationService,
@@ -92,6 +97,16 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest servletRequest) {
         String clientIp = resolveClientIp(servletRequest);
+        if (rateLimiterService != null) {
+            if (!rateLimiterService.isAllowed("login_ip", clientIp, 10, Duration.ofMinutes(1))
+                    || !rateLimiterService.isAllowed("login_email", request.email().toLowerCase().trim(), 5, Duration.ofMinutes(1))) {
+                throw new com.nexaai.auth.exception.AuthException(
+                        com.nexaai.auth.exception.ErrorCode.AUTH_RATE_LIMITED,
+                        "Too many login attempts. Please slow down.",
+                        HttpStatus.TOO_MANY_REQUESTS
+                );
+            }
+        }
         AuthResponse authResponse = authService.login(request, clientIp);
 
         ResponseCookie cookie = cookieService.createRefreshTokenCookie(
@@ -196,7 +211,20 @@ public class AuthController {
 
     @PostMapping("/password/forgot")
     @Operation(summary = "Request password reset", description = "Sends reset instructions to the requested email. Always returns generic 200 response to prevent enumeration.")
-    public ResponseEntity<MessageResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+    public ResponseEntity<MessageResponse> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request,
+            HttpServletRequest servletRequest) {
+        String clientIp = resolveClientIp(servletRequest);
+        if (rateLimiterService != null) {
+            if (!rateLimiterService.isAllowed("forgot_ip", clientIp, 5, Duration.ofMinutes(15))
+                    || !rateLimiterService.isAllowed("forgot_email", request.email().toLowerCase().trim(), 3, Duration.ofMinutes(15))) {
+                throw new com.nexaai.auth.exception.AuthException(
+                        com.nexaai.auth.exception.ErrorCode.AUTH_RATE_LIMITED,
+                        "Too many password reset attempts. Please try again later.",
+                        HttpStatus.TOO_MANY_REQUESTS
+                );
+            }
+        }
         passwordResetService.requestPasswordReset(request.email());
         return ResponseEntity.ok(new MessageResponse("If the email is registered, password reset instructions have been sent."));
     }

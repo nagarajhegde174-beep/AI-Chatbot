@@ -159,4 +159,29 @@ public class GatewaySecurityAndRoutingTest {
                 .expectBody()
                 .jsonPath("$.error.code").isEqualTo("GATEWAY_INVALID_TOKEN");
     }
+
+    @Test
+    void adminRoute_withUserRoleOnly_returns403Forbidden() {
+        String userToken = testJwtHelper.generateToken(
+                UUID.randomUUID(), "regular-user@example.com", List.of("USER"), "ACTIVE", 600000);
+
+        webTestClient.get().uri("/api/v1/admin/overview")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + userToken)
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectBody()
+                .jsonPath("$.error.code").isEqualTo("GATEWAY_FORBIDDEN")
+                .jsonPath("$.error.message").isEqualTo("Administrative access required.");
+    }
+
+    @Test
+    void spoofedIdentityHeaders_areRejectedWithoutValidToken() {
+        webTestClient.get().uri("/api/v1/users/me")
+                .header("X-User-Id", "spoofed-user-id")
+                .header("X-User-Roles", "ADMIN")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody()
+                .jsonPath("$.error.code").isEqualTo("GATEWAY_UNAUTHORIZED");
+    }
 }
