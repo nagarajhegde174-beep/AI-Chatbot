@@ -10,7 +10,7 @@ import java.time.Duration;
 
 /**
  * Foundation for Redis-based rate limiting on sensitive authentication operations.
- * Fails open (allows request) if Redis is unavailable, so cache outages do not cause service outages.
+ * Fails open (allows request) if Redis is unavailable, so cache outages do not cause service outages (RULES.md §7).
  */
 @Service
 public class RedisRateLimiterService {
@@ -24,19 +24,27 @@ public class RedisRateLimiterService {
     }
 
     /**
-     * Increment and check if the count for key exceeds maxAllowed within window.
+     * Legacy login rate-limit check.
+     */
+    public boolean isAllowed(String key, int maxAllowed, Duration window) {
+        return isAllowed("login", key, maxAllowed, window);
+    }
+
+    /**
+     * Increment and check if the count for action:key exceeds maxAllowed within window.
      *
+     * @param action      the operation namespace (e.g. "login", "password_reset", "sensitive")
      * @param key         the rate limit key (e.g. ip address or email)
      * @param maxAllowed  the maximum allowed requests
      * @param window      the time window
      * @return true if request is permitted, false if rate limited
      */
-    public boolean isAllowed(String key, int maxAllowed, Duration window) {
-        if (stringRedisTemplate == null) {
+    public boolean isAllowed(String action, String key, int maxAllowed, Duration window) {
+        if (stringRedisTemplate == null || key == null) {
             return true;
         }
 
-        String redisKey = "auth:ratelimit:login:" + key;
+        String redisKey = "auth:ratelimit:" + action + ":" + key;
         try {
             Long count = stringRedisTemplate.opsForValue().increment(redisKey);
             if (count != null && count == 1) {
@@ -50,9 +58,13 @@ public class RedisRateLimiterService {
     }
 
     public void reset(String key) {
-        if (stringRedisTemplate == null) return;
+        reset("login", key);
+    }
+
+    public void reset(String action, String key) {
+        if (stringRedisTemplate == null || key == null) return;
         try {
-            stringRedisTemplate.delete("auth:ratelimit:login:" + key);
+            stringRedisTemplate.delete("auth:ratelimit:" + action + ":" + key);
         } catch (Exception ex) {
             log.warn("Failed to reset rate limit key: {}", ex.getMessage());
         }

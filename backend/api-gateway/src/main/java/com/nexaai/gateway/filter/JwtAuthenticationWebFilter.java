@@ -74,9 +74,22 @@ public class JwtAuthenticationWebFilter implements WebFilter {
             String userId = jwtVerifier.getUserId(claims);
             List<String> roles = jwtVerifier.getRoles(claims);
 
+            // RBAC: Non-admin users cannot access administrative endpoints
+            if (path.startsWith("/api/v1/admin/") && (roles == null || !roles.contains("ADMIN"))) {
+                return GatewayResponseUtil.writeErrorResponse(
+                        exchange,
+                        HttpStatus.FORBIDDEN,
+                        "GATEWAY_FORBIDDEN",
+                        "Administrative access required.",
+                        correlationId
+                );
+            }
+
             ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
-                    .header("X-User-Id", userId != null ? userId : "")
-                    .header("X-User-Roles", String.join(",", roles))
+                    .headers(h -> {
+                        h.set("X-User-Id", userId != null ? userId : "");
+                        h.set("X-User-Roles", roles != null ? String.join(",", roles) : "USER");
+                    })
                     .build();
 
             return chain.filter(exchange.mutate().request(mutatedRequest).build());

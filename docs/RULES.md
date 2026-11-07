@@ -1,4 +1,4 @@
-# RULES.md — Binding Development Rules
+﻿# RULES.md — Binding Development Rules
 
 These are **rules**, not suggestions. Section numbers are cited by CI checks, by code review and
 by the other documents in this folder, so they are stable: never renumber a section, only add

@@ -103,6 +103,7 @@ interface AdminAuditLog {
   status: string
   timestamp: string
   ip: string
+  details?: string
 }
 
 export function AdminPortal() {
@@ -193,16 +194,14 @@ export function AdminPortal() {
     }
   }
 
-  const fetchAuditLogs = () => {
-    // Generate audit logs from real persisted administrative and access events
-    const logs = [
-      { id: 'aud-001', event: 'USER_LOGIN', actor: 'ada@example.com', target: 'auth-service', status: 'SUCCESS', timestamp: new Date(Date.now() - 1000 * 60 * 12).toISOString(), ip: '127.0.0.1' },
-      { id: 'aud-002', event: 'DOCUMENT_UPLOAD', actor: 'ada@example.com', target: 'document-service', status: 'SUCCESS', timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(), ip: '127.0.0.1' },
-      { id: 'aud-003', event: 'MODEL_TOGGLE', actor: 'admin@nexaai.com', target: 'gpt-4o-mini', status: 'SUCCESS', timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(), ip: '10.0.0.4' },
-      { id: 'aud-004', event: 'RAG_REPROCESS', actor: 'admin@nexaai.com', target: 'doc-89a1c', status: 'SUCCESS', timestamp: new Date(Date.now() - 1000 * 60 * 360).toISOString(), ip: '10.0.0.4' },
-      { id: 'aud-005', event: 'USER_STATUS_CHANGE', actor: 'admin@nexaai.com', target: 'user-77b', status: 'SUCCESS', timestamp: new Date(Date.now() - 1000 * 60 * 720).toISOString(), ip: '10.0.0.4' },
-    ]
-    setAuditLogs(logs)
+  const fetchAuditLogs = async () => {
+    try {
+      const filter = auditFilter ? `?filter=${encodeURIComponent(auditFilter)}` : ''
+      const res = await fetch(`/api/v1/admin/audit-logs${filter}`, { headers: getHeaders() })
+      if (res.ok) setAuditLogs(await res.json())
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load audit logs')
+    }
   }
 
   const loadTabData = (tab: AdminTab) => {
@@ -221,7 +220,7 @@ export function AdminPortal() {
         ? fetchRag()
         : tab === 'analytics'
         ? fetchAnalytics()
-        : Promise.resolve(fetchAuditLogs())
+        : fetchAuditLogs()
 
     p.finally(() => setLoading(false))
   }

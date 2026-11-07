@@ -26,6 +26,7 @@ public class RateLimiterWebFilter implements WebFilter {
 
     private final RateLimiterProperties properties;
     private final Map<String, WindowCounter> authCounters = new ConcurrentHashMap<>();
+    private final Map<String, WindowCounter> sensitiveCounters = new ConcurrentHashMap<>();
     private final Map<String, WindowCounter> apiCounters = new ConcurrentHashMap<>();
 
     public RateLimiterWebFilter(RateLimiterProperties properties) {
@@ -40,6 +41,20 @@ public class RateLimiterWebFilter implements WebFilter {
 
         String path = exchange.getRequest().getURI().getPath();
         String clientIp = resolveClientIp(exchange);
+
+        if (path.startsWith("/api/v1/auth/password/forgot") || path.startsWith("/api/v1/auth/password/reset")) {
+            // Sensitive password reset endpoint rate limit: 5 requests per minute per IP
+            if (!allowRequest(sensitiveCounters, clientIp, 5)) {
+                String correlationId = exchange.getAttribute(CorrelationIdWebFilter.CORRELATION_ID_ATTR);
+                return GatewayResponseUtil.writeErrorResponse(
+                        exchange,
+                        HttpStatus.TOO_MANY_REQUESTS,
+                        "GATEWAY_RATE_LIMIT_EXCEEDED",
+                        "Too many password reset requests. Please try again later.",
+                        correlationId
+                );
+            }
+        }
 
         if (path.startsWith("/api/v1/auth/")) {
             if (!allowRequest(authCounters, clientIp, properties.getAuthRequestsPerMinute())) {

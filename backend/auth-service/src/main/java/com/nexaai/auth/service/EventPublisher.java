@@ -3,7 +3,11 @@ package com.nexaai.auth.service;
 import com.nexaai.auth.config.KafkaConfig;
 import com.nexaai.auth.domain.entity.AuthUser;
 import com.nexaai.auth.dto.event.EventEnvelope;
+import com.nexaai.auth.dto.event.PasswordChangedPayload;
+import com.nexaai.auth.dto.event.SecurityEventPayload;
 import com.nexaai.auth.dto.event.UserEmailVerifiedPayload;
+import com.nexaai.auth.dto.event.UserLoginPayload;
+import com.nexaai.auth.dto.event.UserLogoutPayload;
 import com.nexaai.auth.dto.event.UserRegisteredPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class EventPublisher {
@@ -68,7 +73,7 @@ public class EventPublisher {
     }
 
     public void publishUserLogin(AuthUser user, String correlationId, String ipAddress, String userAgent) {
-        com.nexaai.auth.dto.event.UserLoginPayload payload = new com.nexaai.auth.dto.event.UserLoginPayload(
+        UserLoginPayload payload = new UserLoginPayload(
                 user.getId(),
                 user.getEmail(),
                 Instant.now(),
@@ -76,7 +81,7 @@ public class EventPublisher {
                 userAgent
         );
 
-        EventEnvelope<com.nexaai.auth.dto.event.UserLoginPayload> envelope = EventEnvelope.create(
+        EventEnvelope<UserLoginPayload> envelope = EventEnvelope.create(
                 KafkaConfig.TOPIC_USER_LOGIN,
                 1,
                 correlationId,
@@ -86,6 +91,68 @@ public class EventPublisher {
         );
 
         send(KafkaConfig.TOPIC_USER_LOGIN, user.getId().toString(), envelope);
+    }
+
+    public void publishUserLogout(UUID userId, String email, boolean allSessions, String correlationId) {
+        UserLogoutPayload payload = new UserLogoutPayload(
+                userId,
+                email,
+                Instant.now(),
+                allSessions
+        );
+
+        String idStr = userId != null ? userId.toString() : "unknown";
+        EventEnvelope<UserLogoutPayload> envelope = EventEnvelope.create(
+                KafkaConfig.TOPIC_USER_LOGOUT,
+                1,
+                correlationId,
+                idStr,
+                idStr,
+                payload
+        );
+
+        send(KafkaConfig.TOPIC_USER_LOGOUT, idStr, envelope);
+    }
+
+    public void publishPasswordChanged(UUID userId, String email, String correlationId) {
+        PasswordChangedPayload payload = new PasswordChangedPayload(
+                userId,
+                email,
+                Instant.now()
+        );
+
+        String idStr = userId != null ? userId.toString() : "unknown";
+        EventEnvelope<PasswordChangedPayload> envelope = EventEnvelope.create(
+                KafkaConfig.TOPIC_PASSWORD_CHANGED,
+                1,
+                correlationId,
+                idStr,
+                idStr,
+                payload
+        );
+
+        send(KafkaConfig.TOPIC_PASSWORD_CHANGED, idStr, envelope);
+    }
+
+    public void publishSecurityEvent(String eventType, String actor, String details, String ipAddress, String correlationId) {
+        SecurityEventPayload payload = new SecurityEventPayload(
+                eventType,
+                actor,
+                ipAddress,
+                details,
+                Instant.now()
+        );
+
+        EventEnvelope<SecurityEventPayload> envelope = EventEnvelope.create(
+                KafkaConfig.TOPIC_SECURITY_EVENT,
+                1,
+                correlationId,
+                actor,
+                actor,
+                payload
+        );
+
+        send(KafkaConfig.TOPIC_SECURITY_EVENT, actor, envelope);
     }
 
     private void send(String topic, String key, Object event) {

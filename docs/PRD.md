@@ -1,4 +1,4 @@
-# PRD.md — Product Requirements
+﻿# PRD.md — Product Requirements
 
 NexaAI is an AI chat SaaS. A user brings their own documents, asks questions, and gets answers
 grounded in those documents, from a model they choose.

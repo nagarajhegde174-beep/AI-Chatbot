@@ -10,8 +10,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
 
 razorpay:
-  key-id: ${RAZORPAY_KEY_ID}
-  key-secret: ${RAZORPAY_KEY_SECRET}
+  mode: test
+  key-id: ${RAZORPAY_KEY_ID:rzp_test_nexaai_default}
+  key-secret: ${RAZORPAY_KEY_SECRET:rzp_test_secret_default}

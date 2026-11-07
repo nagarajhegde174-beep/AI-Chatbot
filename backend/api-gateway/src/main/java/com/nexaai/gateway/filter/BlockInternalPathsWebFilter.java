@@ -44,6 +44,14 @@ public class BlockInternalPathsWebFilter implements WebFilter {
             );
         }
 
-        return chain.filter(exchange);
+        // Anti-spoofing: strip any client-supplied X-User-Id / X-User-Roles from incoming external request
+        org.springframework.http.server.reactive.ServerHttpRequest sanitizedRequest = exchange.getRequest().mutate()
+                .headers(h -> {
+                    h.remove("X-User-Id");
+                    h.remove("X-User-Roles");
+                })
+                .build();
+
+        return chain.filter(exchange.mutate().request(sanitizedRequest).build());
     }
 }

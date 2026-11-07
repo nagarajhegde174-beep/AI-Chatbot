@@ -1,4 +1,4 @@
-# TEST_PLAN.md — Testing Strategy
+﻿# TEST_PLAN.md — Testing Strategy
 
 How NexaAI is tested, what each layer is for, and what must never be skipped.
 

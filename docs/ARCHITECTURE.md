@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — NexaAI System Architecture
+﻿# ARCHITECTURE.md — NexaAI System Architecture
 
 This document describes how NexaAI is built. What it must never become is defined in
 [`RULES.md`](RULES.md). API and event details are in

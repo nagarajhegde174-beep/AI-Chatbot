@@ -1,4 +1,4 @@
-# SERVICE_CONTRACTS.md — Service Contracts
+﻿# SERVICE_CONTRACTS.md — Service Contracts
 
 The explicit, versioned agreements between NexaAI services.
 
