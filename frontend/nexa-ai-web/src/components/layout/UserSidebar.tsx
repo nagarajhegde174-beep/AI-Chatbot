@@ -1,4 +1,4 @@
-import { Plus, MessageSquare, FileText, Activity, Settings, X } from 'lucide-react'
+import { Plus, MessageSquare, FileText, Activity, Settings, X, Layers } from 'lucide-react'
 import type { AppRoute } from '../../types/index.ts'
 
 interface UserSidebarProps {
@@ -79,6 +79,15 @@ export function UserSidebar({
           >
             <FileText size={16} />
             <span>Documents</span>
+          </button>
+
+          <button
+            type="button"
+            className={`nexa-nav-item w-100 text-start ${currentRoute === 'workflows' ? 'is-active' : ''}`}
+            onClick={() => handleNav('workflows')}
+          >
+            <Layers size={16} />
+            <span>Workflows</span>
           </button>
 
           <button

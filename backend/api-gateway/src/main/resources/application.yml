@@ -23,6 +23,10 @@ spring:
           uri: ${services.chat-url:http://localhost:8083}
           predicates:
             - Path=/api/v1/chat/**
+        - id: workflow-service
+          uri: ${services.chat-url:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/workflows/**
         - id: ai-service
           uri: ${services.ai-url:http://localhost:8084}
           predicates:

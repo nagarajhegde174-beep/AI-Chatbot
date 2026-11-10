@@ -18,6 +18,7 @@ import { ChangePasswordPage } from './components/auth/ChangePasswordPage.tsx'
 import { UserDashboard } from './components/dashboard/UserDashboard.tsx'
 import { ChatLayout } from './components/chat/ChatLayout.tsx'
 import { DocumentsView } from './components/documents/DocumentsView.tsx'
+import { WorkflowBuilderView } from './components/workflows/WorkflowBuilderView.tsx'
 import { UserUsageDashboard } from './components/usage/UserUsageDashboard.tsx'
 import { PricingBillingView } from './components/billing/PricingBillingView.tsx'
 import { SettingsView } from './components/settings/SettingsView.tsx'
@@ -39,6 +40,7 @@ function pathToRoute(path: string): AppRoute {
   if (clean === 'app') return 'app'
   if (clean === 'chat') return 'chat'
   if (clean === 'documents') return 'documents'
+  if (clean === 'workflows') return 'workflows'
   if (clean === 'usage') return 'usage'
   if (clean === 'billing') return 'billing'
   if (clean === 'settings') return 'settings'
@@ -171,6 +173,7 @@ function AppContent() {
           {route === 'app' && <UserDashboard onNavigate={handleNavigate} />}
           {route === 'chat' && <ChatLayout />}
           {route === 'documents' && <DocumentsView />}
+          {route === 'workflows' && <WorkflowBuilderView />}
           {route === 'usage' && <UserUsageDashboard />}
           {route === 'billing' && <PricingBillingView onNavigate={handleNavigate} />}
           {route === 'settings' && <SettingsView onNavigate={handleNavigate} />}
