@@ -68,10 +68,84 @@ export type AppRoute =
   | 'app'
   | 'chat'
   | 'documents'
+  | 'workflows'
   | 'usage'
   | 'billing'
   | 'settings'
   | 'admin'
+
+export type WorkflowNodeType =
+  | 'TRIGGER'
+  | 'DOCUMENT_INPUT'
+  | 'TEXT_EXTRACTION'
+  | 'AI_PROMPT'
+  | 'SUMMARIZATION'
+  | 'EXTRACTION'
+  | 'DOCUMENT_SEARCH'
+  | 'CONDITION'
+  | 'OUTPUT'
+  | 'NOTIFICATION'
+
+export interface WorkflowNode {
+  readonly id: string
+  readonly type: WorkflowNodeType
+  readonly label: string
+  readonly config?: Record<string, unknown>
+  readonly requiresApproval?: boolean
+}
+
+export interface WorkflowEdge {
+  readonly id: string
+  readonly source: string
+  readonly target: string
+  readonly conditionBranch?: string
+}
+
+export interface WorkflowItem {
+  readonly id: string
+  readonly userId: string
+  readonly name: string
+  readonly description?: string | null
+  readonly triggerType: string
+  readonly nodes: readonly WorkflowNode[]
+  readonly edges: readonly WorkflowEdge[]
+  readonly isEnabled: boolean
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+export interface WorkflowExecutionStepLog {
+  readonly nodeId: string
+  readonly label: string
+  readonly type: string
+  readonly status: 'SUCCESS' | 'FAILED' | 'WAITING_APPROVAL'
+  readonly outputPreview?: string
+  readonly error?: string
+  readonly durationMs?: number
+  readonly timestamp: string
+}
+
+export interface WorkflowExecution {
+  readonly id: string
+  readonly workflowId: string
+  readonly userId: string
+  readonly status: 'PENDING' | 'RUNNING' | 'WAITING_APPROVAL' | 'COMPLETED' | 'FAILED'
+  readonly currentStepIndex: number
+  readonly inputPayload?: string | null
+  readonly outputPayload?: string | null
+  readonly stepLogs: readonly WorkflowExecutionStepLog[]
+  readonly errorMessage?: string | null
+  readonly requiresApproval: boolean
+  readonly pendingApprovalNodeId?: string | null
+  readonly startedAt: string
+  readonly completedAt?: string | null
+}
+
+export interface WorkflowValidationResult {
+  readonly valid: boolean
+  readonly errors: readonly string[]
+  readonly warnings: readonly string[]
+}
 
 export interface DocumentItem {
   readonly id: string
