@@ -24,11 +24,11 @@ yarn-error.log*
 pnpm-debug.log*
 
 # ------------------------------------------------------------- secrets ----
-# Real values must never be committed. Only .env.example placeholders belong
-# in the repository. See docs/RULES.md section 6.
+# Real values and environment files must never be committed.
 .env
 .env.*
-!.env.example
+*.env
+**/.env
 *.pem
 *.key
 *.p12
