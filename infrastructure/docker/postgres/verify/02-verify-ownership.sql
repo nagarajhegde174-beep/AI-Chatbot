@@ -121,7 +121,8 @@ JOIN (VALUES
   ('nexa_chat',         'chat-service'),
   ('nexa_document',     'document-service'),
   ('nexa_rag',          'rag-service'),
-  ('nexa_subscription', 'subscription-service')
+  ('nexa_subscription', 'subscription-service'),
+  ('nexa_analytics',    'analytics-service')
 ) AS t(service_role, owning_service) ON t.service_role = d.datname
 ORDER BY t.owning_service;
 

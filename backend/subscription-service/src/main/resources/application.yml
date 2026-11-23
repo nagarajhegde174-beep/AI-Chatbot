@@ -16,3 +16,9 @@ razorpay:
   mode: test
   key-id: ${RAZORPAY_KEY_ID:rzp_test_nexaai_default}
   key-secret: ${RAZORPAY_KEY_SECRET:rzp_test_secret_default}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

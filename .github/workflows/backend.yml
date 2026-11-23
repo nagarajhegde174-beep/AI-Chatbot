@@ -61,21 +61,25 @@ jobs:
       - id: find
         run: |
           set -euo pipefail
-          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
-          found=""
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service analytics-service"
+          json="["
+          first=1
+          count=0
           for s in $services; do
             if [ -f "backend/$s/pom.xml" ]; then
-              found="${found}${s}\n"
+              if [ $first -eq 1 ]; then
+                json="${json}\"${s}\""
+                first=0
+              else
+                json="${json},\"${s}\""
+              fi
+              count=$((count + 1))
             fi
           done
-          count=$(printf '%b' "$found" | grep -c . || true)
-          {
-            echo "services<<EOF"
-            printf '%b' "$found"
-            echo "EOF"
-            echo "count=$count"
-          } >> "$GITHUB_OUTPUT"
-          echo "Discovered $count implemented service(s) of 8."
+          json="${json}]"
+          echo "services=$json" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Discovered $count implemented service(s) of 9."
 
   # ==========================================================================
   # One independent build-and-test job per implemented service.
