@@ -27,6 +27,7 @@ pnpm-debug.log*
 # Real values and environment files must never be committed.
 .env
 .env.*
+!.env.example
 *.env
 **/.env
 *.pem
@@ -81,3 +82,6 @@ apidocs/
 # NOTE: docs/ itself is deliberately NOT ignored. Documentation is source code.
 # Generated API documentation below is ignored; the hand-written docs are tracked.
 # CI check R13 fails the build if a bare `docs/` line reappears here.
+
+
+

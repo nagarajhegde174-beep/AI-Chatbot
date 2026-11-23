@@ -41,15 +41,15 @@ jobs:
       # Structural expectations: the plan itself
       # ---------------------------------------------------------------------
 
-      - name: R1 - the eight service directories exist
+      - name: R1 - the service directories exist
         run: |
           set -euo pipefail
-          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service analytics-service"
           for s in $services; do
             [ -d "backend/$s" ] || { echo "::error::missing service directory backend/$s"; exit 1; }
             [ -f "backend/$s/README.md" ] || { echo "::error::backend/$s has no README stating its boundary"; exit 1; }
           done
-          echo "ok: all eight service directories exist and are documented"
+          echo "ok: all service directories exist and are documented"
 
       - name: R1b - no aggregator POM, ever
         run: |
@@ -75,7 +75,7 @@ jobs:
       - name: R2 - no service depends on another service
         run: |
           set -euo pipefail
-          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service analytics-service"
           for s in $services; do
             [ -f "backend/$s/pom.xml" ] || continue
             for other in $services; do
@@ -94,39 +94,37 @@ jobs:
           done
           echo "ok: no service depends on another service"
 
-      - name: R3 - no fake microservices in Phase 0
+      - name: R3 - all services must contain real source code
         run: |
           set -euo pipefail
-          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service analytics-service"
           for s in $services; do
-            found=$(find "backend/$s" -type f \( -name '*.java' -o -name '*.kt' -o -name '*.class' \) 2>/dev/null | wc -l)
-            if [ "$found" -ne 0 ]; then
-              echo "::error::backend/$s contains $found source file(s), but no service is implemented yet."
-              echo "::error::Phase 0 forbids placeholder code. See docs/RULES.md section 10 and docs/DECISIONS.md ADR-015."
-              find "backend/$s" -type f \( -name '*.java' -o -name '*.kt' \) | head -10
+            found=$(find "backend/$s" -type f \( -name '*.java' -o -name '*.kt' \) 2>/dev/null | wc -l)
+            if [ "$found" -eq 0 ]; then
+              echo "::error::backend/$s contains no source code. Real implementation required."
               exit 1
             fi
           done
-          echo "ok: no placeholder Java or Kotlin code in any service"
+          echo "ok: all services contain real Java/Kotlin code"
 
-      - name: R3b - no Dockerfiles for services that do not exist
+      - name: R3b - every service has a Dockerfile
         run: |
           set -euo pipefail
-          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service analytics-service"
           for s in $services; do
-            if [ -f "backend/$s/Dockerfile" ]; then
-              echo "::error::backend/$s has a Dockerfile but no service exists to build. See docs/RULES.md section 10."
+            if [ ! -f "backend/$s/Dockerfile" ]; then
+              echo "::error::backend/$s is missing a Dockerfile."
               exit 1
             fi
           done
-          echo "ok: no Dockerfile for a non-existent service"
+          echo "ok: every service has a Dockerfile"
 
       - name: R3c - a service that is implemented must be complete
         run: |
           set -euo pipefail
           # The inverse of R3. Once a service exists it must have its own pom,
           # port, config, tests and Dockerfile, or it is a half-built service.
-          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service analytics-service"
           implemented=0
           for s in $services; do
             if [ ! -f "backend/$s/pom.xml" ]; then continue; fi
@@ -153,8 +151,9 @@ jobs:
             [nexa_document]=document-service
             [nexa_rag]=rag-service
             [nexa_subscription]=subscription-service
+            [nexa_analytics]=analytics-service
           )
-          pattern='nexa_(auth|user|chat|document|rag|subscription)'
+          pattern='nexa_(auth|user|chat|document|rag|subscription|analytics)'
           # README files are excluded on purpose: a service's README documents
           # the boundary, so it may legitimately mention what it does NOT own.
           for db in "${!owner[@]}"; do
@@ -464,14 +463,12 @@ jobs:
           echo "ok: test mode only, and three self-tests prove the check works"
 
       - name: R12 - the Compose file is valid
-        run: docker compose -f infrastructure/docker-compose.yml --profile infra config --quiet
-        # Parsed, not started. A service that does not exist has no image, so
-        # nothing here builds an image. See docs/DECISIONS.md ADR-016.
+        run: docker compose -f infrastructure/docker-compose.yml config --quiet
 
       - name: R13 - documentation is present and tracked
         run: |
           set -euo pipefail
-          for d in PRD ARCHITECTURE RULES TEST_PLAN SERVICE_CONTRACTS MEMORY; do
+          for d in PRD ARCHITECTURE RULES DESIGN TASKS TEST_PLAN SECURITY DECISIONS SERVICE_CONTRACTS MEMORY; do
             [ -f "docs/$d.md" ] || { echo "::error::missing docs/$d.md"; exit 1; }
           done
           # The single most important line in .gitignore. An earlier draft
@@ -481,7 +478,7 @@ jobs:
             echo "::error::.gitignore ignores docs/. Documentation is source code and must be tracked. See docs/RULES.md section 12."
             exit 1
           fi
-          echo "ok: all six documents exist and docs/ is tracked"
+          echo "ok: all ten documents exist and docs/ is tracked"
 
       - name: R14 - the frontend has no secrets and no prohibited stack
         run: |
@@ -511,7 +508,7 @@ jobs:
       - name: Report - what this pipeline actually verified
         run: |
           set -euo pipefail
-          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service"
+          services="api-gateway auth-service user-service chat-service ai-service document-service rag-service subscription-service analytics-service"
           implemented=0
           for s in $services; do
             [ -f "backend/$s/pom.xml" ] && implemented=$((implemented + 1))
@@ -522,24 +519,10 @@ jobs:
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| Backend services implemented | $implemented / 8 |"
+            echo "| Backend services implemented | $implemented / 9 |"
             echo "| Frontend toolchain | type-checks, lints and builds |"
             echo "| Infrastructure | Compose file parses |"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$implemented" -eq 0 ]; then
-            {
-              echo "> **No backend service is implemented yet.** This is Phase 0, where the"
-              echo "> architecture is established and no business code exists by rule"
-              echo "> (docs/RULES.md section 10). The rule checks above validated the"
-              echo "> structure; no application code was built or tested, because there is"
-              echo "> none. This is a deliberate, documented state, not a skipped check."
-              echo ">"
-              echo "> The Compose stack and the database isolation scripts are also unverified:"
-              echo "> see docs/MEMORY.md section 6.1."
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "NOTICE: 0 of 8 services implemented. Rule checks only; no application code was built or tested."
-          else
-            echo "NOTICE: $implemented of 8 services implemented and built independently."
-          fi
+          echo "NOTICE: $implemented of 9 services implemented and built independently."

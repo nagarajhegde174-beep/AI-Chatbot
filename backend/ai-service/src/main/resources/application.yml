@@ -2,14 +2,8 @@ spring:
   application:
     name: ai-service
 
-  # ── No datasource, no JPA, no Flyway ──────────────────────────────────────
-  # AI Service is stateless by design (ADR-007). Any attempt to add a
-  # datasource will be caught by CI rule R3.2.
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
-      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+  # ── No database ──────────────────────────────────────────────────────────
+  # AI Service is stateless by design (ADR-007). Zero DB dependencies.
 
   # ── Spring AI auto-configuration opt-out ─────────────────────────────────
   # We configure ChatModel beans manually in AiClientConfig to support three
@@ -43,6 +37,12 @@ management:
   endpoint:
     health:
       show-details: never
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
 
 # ── AI provider configuration ──────────────────────────────────────────────
 nexaai:

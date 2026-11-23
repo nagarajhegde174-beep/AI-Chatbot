@@ -19,6 +19,7 @@ There is deliberately **no `backend/pom.xml`** and no aggregator of any kind
 | [`document-service`](document-service) | 8085 | `nexa_document` | 6 |
 | [`rag-service`](rag-service) | 8086 | `nexa_rag` | 7 |
 | [`subscription-service`](subscription-service) | 8087 | `nexa_subscription` | 9 |
+| [`analytics-service`](analytics-service) | 8088 | `nexa_analytics` | 8/12 |
 
 ## When a service is implemented
 

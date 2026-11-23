@@ -31,6 +31,7 @@ CREATE ROLE nexa_chat            LOGIN PASSWORD 'nexa_chat_local_pw';
 CREATE ROLE nexa_document        LOGIN PASSWORD 'nexa_document_local_pw';
 CREATE ROLE nexa_rag             LOGIN PASSWORD 'nexa_rag_local_pw';
 CREATE ROLE nexa_subscription    LOGIN PASSWORD 'nexa_subscription_local_pw';
+CREATE ROLE nexa_analytics       LOGIN PASSWORD 'nexa_analytics_local_pw';
 
 -- A read-only role used by ad-hoc inspection during development. It still
 -- cannot cross a service boundary, because no role may.
@@ -46,6 +47,7 @@ CREATE DATABASE nexa_chat         OWNER nexa_chat;
 CREATE DATABASE nexa_document     OWNER nexa_document;
 CREATE DATABASE nexa_rag          OWNER nexa_rag;
 CREATE DATABASE nexa_subscription OWNER nexa_subscription;
+CREATE DATABASE nexa_analytics    OWNER nexa_analytics;
 
 -- ---------------------------------------------------------------------
 -- Lock the doors
@@ -63,6 +65,7 @@ REVOKE ALL ON DATABASE nexa_auth         FROM PUBLIC;
 REVOKE ALL ON DATABASE nexa_user         FROM PUBLIC;
 REVOKE ALL ON DATABASE nexa_chat         FROM PUBLIC;
 REVOKE ALL ON DATABASE nexa_subscription FROM PUBLIC;
+REVOKE ALL ON DATABASE nexa_analytics    FROM PUBLIC;
 REVOKE CONNECT ON DATABASE nexa_document FROM PUBLIC;
 REVOKE CONNECT ON DATABASE nexa_rag      FROM PUBLIC;
 
@@ -112,3 +115,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO nexa_subscription;
 ALTER SCHEMA public OWNER TO nexa_subscription;
+
+\connect nexa_analytics
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+GRANT ALL ON SCHEMA public TO nexa_analytics;
+ALTER SCHEMA public OWNER TO nexa_analytics;

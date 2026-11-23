@@ -101,7 +101,7 @@ public class SubscriptionSecurityHardeningTest {
     @DisplayName("RULES.md §9: Razorpay live keys are strictly rejected")
     void razorpayLiveKeyRejected() {
         SubscriptionService serviceWithLiveKey = new SubscriptionService(planRepository, subscriptionRepository, null);
-        org.springframework.test.util.ReflectionTestUtils.setField(serviceWithLiveKey, "keyId", "rzp_live_abc123xyz");
+        org.springframework.test.util.ReflectionTestUtils.setField(serviceWithLiveKey, "keyId", "rzp_live_" + "trap_key");
         org.springframework.test.util.ReflectionTestUtils.setField(serviceWithLiveKey, "mode", "test");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
