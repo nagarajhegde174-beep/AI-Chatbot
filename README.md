@@ -43,19 +43,42 @@ Built with a decoupled **Java 21 + Spring Boot 3** microservices architecture, *
 
 NexaAI follows a strict **Database-per-Service** microservices pattern with **no shared databases**, **no aggregator POM**, and **Kafka KRaft (zero ZooKeeper)**.
 
-```
-Client ──▶ NGINX Edge (:8089) ──▶ Spring Cloud API Gateway (:8080)
-                                          │
-      ┌───────────────┬───────────────┬───┴───┬───────────────┬───────────────┐
-      ▼               ▼               ▼       ▼               ▼               ▼
-auth-service    user-service    chat-service  document-svc  subscription  analytics-svc
-   (:8081)         (:8082)         (:8083)      (:8085)       (:8087)       (:8088)
- (nexa_auth)     (nexa_user)     (nexa_chat)  (nexa_doc)    (nexa_sub)    (nexa_ana)
-                                      │             │
-                              REST    ▼             ▼  Kafka (KRaft :9092)
-                              ai-service       rag-service
-                               (:8084)           (:8086)
-                             (Stateless)   (nexa_rag + pgvector)
+```mermaid
+flowchart TB
+    Client["🌐 Browser / Client"]
+
+    subgraph Frontend["Frontend & Edge (Port 8089 / 5173)"]
+        NGINX["NGINX Edge Proxy<br/>(Serves React SPA + Rate Limit + SSE)"]
+        React["React 19 + Vite + TypeScript<br/>Bootstrap 5 + SCSS"]
+        NGINX -->|"SPA Routing"| React
+    end
+
+    Razorpay["💳 Razorpay Test Mode<br/>(External)"]
+    LLM["🤖 OpenAI / Gemini / Groq / Ollama<br/>(External)"]
+
+    subgraph Backend["API Gateway & Microservices (Spring Boot 3 / Java 21)"]
+        Gateway["Spring Cloud API Gateway (:8080)<br/>RS256 JWT Auth · CORS · Routing"]
+        CoreServices["auth-service (:8081) · user-service (:8082)<br/>chat-service (:8083) · document-service (:8085)<br/>rag-service (:8086) · subscription-service (:8087)<br/>analytics-service (:8088)"]
+        AIService["ai-service (:8084)<br/>Stateless · Spring AI · Agentic Tools"]
+        Gateway --> CoreServices
+        CoreServices -->|"REST / SSE"| AIService
+    end
+
+    subgraph Data["Data & Messaging"]
+        PG[("PostgreSQL 17 + pgvector<br/>Port: 5432<br/>Isolated DB per Service")]
+        Redis[("Redis 7<br/>Port: 6379<br/>Cache · Denylist · Rate Limit")]
+        Kafka[("Apache Kafka 4.1 (KRaft)<br/>Port: 9092<br/>Zero ZooKeeper")]
+    end
+
+    Client -->|"HTTP :8089"| NGINX
+    NGINX -->|"Proxy /api/*"| Gateway
+    Razorpay -->|"Webhooks"| Gateway
+    AIService -->|"Spring AI Inference"| LLM
+
+    CoreServices -->|"Entities / JPA"| PG
+    Gateway <-->|"Rate Limiting / Denylist"| Redis
+    CoreServices -->|"Publishes Events"| Kafka
+    Kafka -->|"Consumes Events"| CoreServices
 ```
 
 ### Microservices Overview
