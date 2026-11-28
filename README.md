@@ -1,268 +1,141 @@
-# NexaAI — Multi-Model AI Chat & Agentic Workflow Platform
+<div align="center">
 
-[![Backend CI](https://github.com/nexaai/nexaai/actions/workflows/backend.yml/badge.svg)](https://github.com/nexaai/nexaai/actions/workflows/backend.yml)
-[![Frontend CI](https://github.com/nexaai/nexaai/actions/workflows/frontend.yml/badge.svg)](https://github.com/nexaai/nexaai/actions/workflows/frontend.yml)
-[![Architecture Rules](https://github.com/nexaai/nexaai/actions/workflows/rules.yml/badge.svg)](https://github.com/nexaai/nexaai/actions/workflows/rules.yml)
+# NexaAI
 
-**NexaAI** is an enterprise-grade Software-as-a-Service (SaaS) platform providing unified access to multiple Large Language Model (LLM) providers, Retrieval-Augmented Generation (RAG) over uploaded user documents, an interactive visual Workflow Builder, autonomous Agentic AI function calling, and subscription billing.
+**Enterprise Multi-Model AI Chat, RAG & Agentic Workflow SaaS Platform**
 
-The backend is built as **eight independent Spring Boot 3 microservices** and a central **Spring Cloud API Gateway**. It strictly adheres to pure microservices principles: independent builds, dedicated database ownership, asynchronous event decoupling via Apache Kafka in KRaft mode, and zero monolithic coupling.
+Built with a decoupled **Java 21 + Spring Boot 3** microservices architecture, **Spring AI**, **Apache Kafka (KRaft)**, **PostgreSQL + pgvector**, and **React + TypeScript + Bootstrap 5**.
+
+<p>
+  <img src="https://img.shields.io/badge/JAVA-21-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 21" />
+  <img src="https://img.shields.io/badge/SPRING_BOOT-3.4-6DB33F?style=for-the-badge&logo=springboot&logoColor=white" alt="Spring Boot 3.4" />
+  <img src="https://img.shields.io/badge/SPRING_SECURITY-6-6DB33F?style=for-the-badge&logo=springsecurity&logoColor=white" alt="Spring Security" />
+  <img src="https://img.shields.io/badge/SPRING_AI-1.0-6DB33F?style=for-the-badge&logo=spring&logoColor=white" alt="Spring AI" />
+  <img src="https://img.shields.io/badge/JWT-0.12.6-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white" alt="JWT" />
+  <img src="https://img.shields.io/badge/TYPESCRIPT-6.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/REACT-19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React 19" />
+  <img src="https://img.shields.io/badge/VITE-8.3-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/BOOTSTRAP-5.3-7952B3?style=for-the-badge&logo=bootstrap&logoColor=white" alt="Bootstrap 5" />
+  <img src="https://img.shields.io/badge/POSTGRESQL-17-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL 17" />
+  <img src="https://img.shields.io/badge/REDIS-7-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis 7" />
+  <img src="https://img.shields.io/badge/KAFKA-4.1_KRaft-231F20?style=for-the-badge&logo=apachekafka&logoColor=white" alt="Kafka" />
+  <img src="https://img.shields.io/badge/DOCKER-COMPOSE-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Compose" />
+  <img src="https://img.shields.io/badge/NGINX-1.27-009639?style=for-the-badge&logo=nginx&logoColor=white" alt="NGINX" />
+  <img src="https://img.shields.io/badge/RAZORPAY-1.4.0-0C2451?style=for-the-badge&logo=razorpay&logoColor=white" alt="Razorpay" />
+</p>
+
+</div>
 
 ---
 
-## Architecture Overview
+## Key Features
+
+- **Multi-Model AI Chat & Streaming**: Real-time SSE token streaming across **OpenAI**, **Google Gemini**, **Groq**, and **Ollama** with automatic provider fallback.
+- **Document RAG with Citations**: Upload PDF/TXT/DOCX files; asynchronous Kafka chunking, vector embeddings, and cosine similarity search via **PostgreSQL `pgvector`** with exact page citations.
+- **Agentic AI & Visual Workflow Builder**: Drag-and-drop DAG workflow builder (`Trigger → Action → Result`) with Spring AI tool calling (Calculator, Document Search, Controlled DB Lookup, Weather, File Analyzer) and human-in-the-loop approvals.
+- **Enterprise Auth & RBAC**: RS256 asymmetric JWT authentication, Google OAuth2 login, email verification, OTP password reset, Redis token revocation, and strict `USER` / `ADMIN` role isolation.
+- **Subscriptions & Billing**: Tiered SaaS plans (`Free`, `Pro`, `Enterprise`) powered by **Razorpay (Test Mode)** with HMAC-SHA256 webhook verification and idempotency keys.
+- **Admin & Usage Analytics**: Real-time token telemetry, quota enforcement, rate limiting (NGINX + Redis), and system health dashboards.
+
+---
+
+## System Architecture
+
+NexaAI follows a strict **Database-per-Service** microservices pattern with **no shared databases**, **no aggregator POM**, and **Kafka KRaft (zero ZooKeeper)**.
 
 ```
-                      +-----------------------------+
-                      |   Browser / Mobile Client   |
-                      +--------------+--------------+
-                                     |
-                                     v
-                 +-------------------+-------------------+
-                 |    NGINX Edge Reverse Proxy (8089)    |
-                 |     (SSL Termination, Rate Limit,     |
-                 |      Static SPA Assets, SSE Pass)     |
-                 +-------------------+-------------------+
-                                     |
-                                     v
-                 +-------------------+-------------------+
-                 |     Spring Cloud API Gateway (8080)   |
-                 |      (JWT Verification, Routing,      |
-                 |       CORS, Request Correlation)      |
-                 +-------------------+-------------------+
-                                     |
-       +------------+------------+---+--------+------------+------------+
-       |            |            |            |            |            |
-       v            v            v            v            v            v
-+------------+ +----------+ +----------+ +----------+ +----------+ +----------+
-|auth-service| |user-svc  | |chat-svc  | |doc-svc   | |sub-svc   | |analytics |
-|   (8081)   | |  (8082)  | |  (8083)  | |  (8085)  | |  (8087)  | |  (8088)  |
-+-----+------+ +----+-----+ +----+-----+ +----+-----+ +----+-----+ +----+-----+
-      |             |            |            |            |            |
-      v             v            v            v            v            v
- (nexa_auth)   (nexa_user)  (nexa_chat)  (nexa_doc)   (nexa_sub)   (nexa_ana)
-      |             |            |            |            |            |
-      +-------------+------------+------+-----+------------+------------+
-                                        |
-                 +----------------------+----------------------+
-                 |          Apache Kafka (KRaft Mode)          |
-                 |    auth.events, chat.events, doc.events,    |
-                 |    rag.events, usage.events                 |
-                 +-----------+----------------------+----------+
-                             |                      |
-                             v                      v
-                      +--------------+       +--------------+
-                      |  rag-service |       |  ai-service  |
-                      |    (8086)    |       |    (8084)    |
-                      +------+-------+       +------+-------+
-                             |                      |
-                             v                      v
-                         (nexa_rag)            (Stateless)
-                         [pgvector]          [Spring AI Tools]
-                                             OpenAI/Gemini/Groq
+Client ──▶ NGINX Edge (:8089) ──▶ Spring Cloud API Gateway (:8080)
+                                          │
+      ┌───────────────┬───────────────┬───┴───┬───────────────┬───────────────┐
+      ▼               ▼               ▼       ▼               ▼               ▼
+auth-service    user-service    chat-service  document-svc  subscription  analytics-svc
+   (:8081)         (:8082)         (:8083)      (:8085)       (:8087)       (:8088)
+ (nexa_auth)     (nexa_user)     (nexa_chat)  (nexa_doc)    (nexa_sub)    (nexa_ana)
+                                      │             │
+                              REST    ▼             ▼  Kafka (KRaft :9092)
+                              ai-service       rag-service
+                               (:8084)           (:8086)
+                             (Stateless)   (nexa_rag + pgvector)
 ```
 
----
+### Microservices Overview
 
-## Microservices Breakdown
-
-| Service | Port | Database | Technology | Responsibility |
-|---|:---:|---|---|---|
-| **`edge` (NGINX)** | 8089 | *none* | NGINX 1.27 Alpine | Public entry point, SSL termination, static SPA hosting, edge rate-limiting, SSE unbuffered streaming. |
-| **`api-gateway`** | 8080 | *none* | Spring Cloud Gateway | Ingress proxy, RS256 JWT public key validation, request correlation, dynamic downstream routing. |
-| **`auth-service`** | 8081 | `nexa_auth` | Spring Boot 3, Spring Security 6 | Registration, email verification, password reset, login, RS256 JWT issuance, bcrypt hashing. |
-| **`user-service`** | 8082 | `nexa_user` | Spring Boot 3, Spring Data JPA | User profile management, password updates, admin RBAC, user status management. |
-| **`chat-service`** | 8083 | `nexa_chat` | Spring Boot 3, Spring Data JPA | Conversations, message history, context memory, visual Workflow Builder execution engine. |
-| **`ai-service`** | 8084 | *none* | Spring Boot 3, Spring AI, WebFlux | Stateless multi-model LLM routing (OpenAI, Gemini, Groq, Ollama), model fallback, tool calling. |
-| **`document-service`** | 8085 | `nexa_document` | Spring Boot 3, Apache Tika | Document upload (PDF, TXT, DOCX), 25MB ceiling, text extraction, Kafka publishing. |
-| **`rag-service`** | 8086 | `nexa_rag` | Spring Boot 3, PostgreSQL `pgvector` | Recursive chunking, embedding generation, HNSW cosine similarity search, citation retrieval. |
-| **`subscription-service`** | 8087 | `nexa_subscription` | Spring Boot 3, Razorpay Java SDK | Subscription tiers, Razorpay Test Mode checkout, HMAC-SHA256 webhook processing, idempotency. |
-| **`analytics-service`** | 8088 | `nexa_analytics` | Spring Boot 3, Spring Kafka | Token usage aggregation, API telemetry, administrative metrics dashboard. |
-| **`nexa-ai-web`** | 5173 / 80 | *none* | React 18, TypeScript, Bootstrap 5 | Single Page Application (SPA), Dark/Light/System theme, real-time chat, visual workflow canvas. |
+| Service | Port | Database | Core Responsibility |
+|---|:---:|---|---|
+| **edge (NGINX)** | `8089` | — | Reverse proxy, static SPA host, IP rate limiting, unbuffered SSE |
+| **api-gateway** | `8080` | — | Central routing, RS256 JWT validation, CORS, correlation IDs |
+| **auth-service** | `8081` | `nexa_auth` | Registration, login, Google OAuth2, OTP reset, RS256 JWT issuance |
+| **user-service** | `8082` | `nexa_user` | User profiles, settings, admin user management |
+| **chat-service** | `8083` | `nexa_chat` | Conversations, sliding-window memory, DAG workflow execution |
+| **ai-service** | `8084` | *Stateless* | Spring AI multi-model routing, fallback, agentic tool calling |
+| **document-service** | `8085` | `nexa_document` | File upload (≤25 MB), Apache Tika extraction, Kafka events |
+| **rag-service** | `8086` | `nexa_rag` | Chunking, embeddings, `pgvector` HNSW cosine similarity retrieval |
+| **subscription-service** | `8087` | `nexa_subscription` | Plans, Razorpay Test Mode checkout, idempotent webhooks |
+| **analytics-service** | `8088` | `nexa_analytics` | Kafka usage consumer, token metrics, admin overview |
+| **nexa-ai-web** | `5173` | — | React 19 + TypeScript + Bootstrap 5 + SCSS (Light/Dark/System) |
 
 ---
 
-## Technology Stack
+## Project Structure
 
-- **Backend Framework**: Spring Boot 3.4.x, Java 21 LTS
-- **AI Orchestration**: Spring AI 1.0.0-M6 (Multi-provider abstraction, Tool/Function Calling)
-- **API Gateway**: Spring Cloud Gateway 2023.x (WebFlux Reactive)
-- **Message Broker**: Apache Kafka 4.1.0 in **KRaft Mode** (Zero ZooKeeper)
-- **Primary Database**: PostgreSQL 17 with `pgvector` extension
-- **Cache & Rate Limiting**: Redis 7-Alpine (strictly ephemeral; never primary DB)
-- **Database Migrations**: Flyway
-- **Frontend Stack**: React 18, TypeScript, Vite, Bootstrap 5 + SCSS (**Tailwind strictly prohibited**)
-- **Reverse Proxy**: NGINX 1.27 Alpine
-- **Containerization**: Multi-stage Docker builds, Docker Compose v2
-- **CI/CD**: GitHub Actions
-
----
-
-## Inter-Service Communication
-
-1. **Synchronous (REST / HTTP)**:
-   - Used for immediate client-facing queries and low-latency internal orchestration (e.g., `chat-service` calls `ai-service` for LLM inference; `chat-service` calls `rag-service` for vector retrieval).
-2. **Asynchronous (Apache Kafka with KRaft)**:
-   - Zero ZooKeeper architecture using Kafka's built-in Raft consensus.
-   - Decoupled event streams:
-     - `auth.events`: User registered, password reset requested.
-     - `document.events`: Document uploaded, raw text extracted.
-     - `rag.events`: Document indexed, embedding ready.
-     - `chat.events`: Message exchanged.
-     - `usage.events`: Token consumed, quota incremented.
-3. **Database Isolation**:
-   - Each microservice exclusively owns its schema and PostgreSQL user.
-   - Cross-service database queries or foreign schema joins are strictly forbidden.
-
----
-
-## RAG Pipeline (Retrieval-Augmented Generation)
-
-```
-User Uploads File (PDF/TXT/DOCX)
-       │
-       ▼
-[document-service] ──▶ Extracts Text ──▶ Emits `document.uploaded.v1`
-                                                 │ (Kafka)
-                                                 ▼
-                                          [rag-service]
-                                                 │
-                                                 ├─▶ Recursive Semantic Chunking
-                                                 ├─▶ Generates Vector Embeddings
-                                                 └─▶ Stores in PostgreSQL (nexa_rag)
-                                                     via `pgvector` HNSW index
-                                                         │
-User Queries Chat ───────────────────────────────────────┤
-       │                                                 │
-       ▼                                                 ▼
-[chat-service] ──▶ Queries Context ──▶ Cosine Similarity Retrieval Top-K
-       │                                                 │
-       ▼                                                 ▼
-[ai-service] ◀── Grounded Context + Prompt ──────────────┘
-       │
-       ▼
-Streams Response with Citations (Doc title, page number, confidence)
+```text
+NexaAI/
+├── backend/
+│   ├── api-gateway/            # Spring Cloud Gateway (JWT filter, routing)
+│   ├── auth-service/           # Authentication, JWT, OAuth2, OTP
+│   ├── user-service/           # Profiles & admin user controls
+│   ├── chat-service/           # Chat, memory & workflow builder engine
+│   ├── ai-service/             # Spring AI LLM router & agentic tools
+│   ├── document-service/       # File upload & text extraction
+│   ├── rag-service/            # Chunking, embeddings & pgvector search
+│   ├── subscription-service/   # Plans & Razorpay Test Mode billing
+│   └── analytics-service/      # Usage telemetry & admin metrics
+├── frontend/
+│   └── nexa-ai-web/            # React 19 + TypeScript + Bootstrap 5 + SCSS
+├── infrastructure/
+│   ├── docker-compose.yml      # Full stack (Postgres, Redis, Kafka KRaft, NGINX, Apps)
+│   └── docker/                 # Init SQL scripts, NGINX & Redis configs
+└── .github/workflows/          # CI/CD (Backend matrix, Frontend build, Rule checks)
 ```
 
 ---
 
-## Spring AI Multi-Model Routing & Tool Calling
+## Quick Start
 
-The stateless `ai-service` encapsulates Spring AI to communicate with:
-- **OpenAI**: `gpt-4o`, `gpt-4o-mini`
-- **Google Gemini**: `gemini-1.5-pro`, `gemini-1.5-flash`
-- **Groq**: `llama-3.3-70b-versatile`
-- **Ollama**: Local models (`llama3`)
-
-### Agentic AI Tools
-Spring AI Tool Calling enables autonomous reasoning loops (max 5 iterations):
-- `calculator`: Deterministic mathematical and financial evaluations.
-- `documentSearch`: Semantic vector queries against user's permitted documents.
-- `databaseSearch`: Controlled, parameterized read-only queries against tenant views.
-- `weather`: Meteorological data lookup.
-- `fileAnalyzer`: File structure and metadata extraction.
-
----
-
-## Subscription & Payment Architecture (Razorpay Test Mode)
-
-- **Test Mode Pinned**: Real financial transactions are strictly blocked. All credentials use `rzp_test_*`.
-- **Server-Side Verification**: Orders verified via cryptographic HMAC-SHA256 signature matching.
-- **Webhook Idempotency**: Redis locks and database unique constraints prevent duplicate processing of payment webhooks.
-
----
-
-## How to Run Locally
-
-### Prerequisites
-- Docker & Docker Compose v2+
-- Java 21 LTS & Maven 3.9+
-- Node.js 20+ & npm
-
-### 1. Configure Environment
-Copy the example environment template:
-```bash
-cp .env.example .env
-```
-*(Leave default local values or provide your own local test API keys if testing live LLM providers).*
-
-### 2. Start Full Stack via Docker Compose
-To boot all 9 microservices, PostgreSQL, Redis, Kafka (KRaft), NGINX, and Frontend:
+### 1. Run Entire Stack with Docker Compose
 ```bash
 docker compose -f infrastructure/docker-compose.yml up -d
 ```
+- **Web App (NGINX Edge)**: `http://localhost:8089`
+- **API Gateway**: `http://localhost:8080`
+- **Swagger UI (per service)**: `http://localhost:<PORT>/swagger-ui.html`
 
-### 3. Start Infrastructure Only (for local service debugging)
+### 2. Run Locally (Development)
+Start infrastructure only (PostgreSQL + pgvector, Redis, Kafka KRaft):
 ```bash
 docker compose -f infrastructure/docker-compose.yml --profile infra up -d
 ```
-
-### 4. Run a Microservice Locally in Debug Mode
-Each service compiles independently from its own directory:
+Run any backend service independently:
 ```bash
-cd backend/auth-service
-mvn spring-boot:run
+cd backend/auth-service && mvn spring-boot:run
 ```
-
-### 5. Access Endpoints
-- **Web Frontend**: [http://localhost:8089](http://localhost:8089) (via NGINX Edge) or [http://localhost:5173](http://localhost:5173) (Vite Dev)
-- **API Gateway**: [http://localhost:8080](http://localhost:8080)
-- **Auth Service**: [http://localhost:8081](http://localhost:8081)
-- **Swagger UI**: Available per service at `http://localhost:<PORT>/swagger-ui.html`
+Run the frontend:
+```bash
+cd frontend/nexa-ai-web && npm install && npm run dev
+```
 
 ---
 
-## Testing Guide
+## Testing & CI/CD
 
-### Run Backend Unit & Integration Tests
 ```bash
-# Test individual microservices independently
+# Test any backend microservice independently
 mvn -f backend/auth-service/pom.xml test
-mvn -f backend/user-service/pom.xml test
-mvn -f backend/api-gateway/pom.xml test
-mvn -f backend/ai-service/pom.xml test
-mvn -f backend/chat-service/pom.xml test
-mvn -f backend/document-service/pom.xml test
-mvn -f backend/rag-service/pom.xml test
-mvn -f backend/subscription-service/pom.xml test
-mvn -f backend/analytics-service/pom.xml test
+
+# Lint, type-check, and build frontend
+cd frontend/nexa-ai-web && npm run lint && npm run build
 ```
 
-### Run Frontend Lint & Build
-```bash
-cd frontend/nexa-ai-web
-npm run lint
-npm run build
-```
-
----
-
-## CI / CD Pipelines (GitHub Actions)
-
-- **`.github/workflows/backend.yml`**: Discovers all implemented microservices, builds effective POMs, runs unit/slice/integration tests in an isolated matrix, verifies zero `@Disabled` tests, and archives JAR artifacts.
-- **`.github/workflows/frontend.yml`**: Type-checks TypeScript, lints code, validates production SCSS compilation, verifies total absence of Tailwind CSS, and checks for secret leaks.
-- **`.github/workflows/rules.yml`**: Enforces architectural rules (no aggregator POM, no sibling dependencies, KRaft mode, database ownership, exactly two roles: USER and ADMIN, Razorpay Test Mode only).
-
----
-
-## 🎓 Fresher-Friendly Interview Explanation
-
-> **"How would you explain the NexaAI architecture in a software engineering interview?"**
-
-Here is a simple, structured 2-minute explanation you can speak directly in an interview:
-
-### 1. The High-Level Pitch
-*"NexaAI is a cloud-native, multi-model AI platform designed like ChatGPT Plus with custom workflows. Instead of locking users into one AI model like OpenAI, NexaAI lets users chat with GPT-4, Google Gemini, or Groq, upload PDFs to ask questions with exact citations (RAG), and create automated visual workflows (like 'Summarize this document and email the result')."*
-
-### 2. Microservices & Database Ownership
-*"To ensure high availability and scalability, we built it as 8 independent Spring Boot microservices behind a Spring Cloud API Gateway and an NGINX reverse proxy. 
-A key principle we followed is **Database-per-Service**: Auth Service owns `nexa_auth`, Chat Service owns `nexa_chat`, and Document Service owns `nexa_document`. No service ever connects to another service's database directly. If Chat needs user details, it calls the User API over REST."*
-
-### 3. Kafka & Asynchronous Processing
-*"For heavy tasks like document processing, we use **Apache Kafka in modern KRaft mode** without ZooKeeper. When a user uploads a PDF, `document-service` saves the raw file and emits a `document.uploaded` event to Kafka. The `rag-service` consumes that event in the background, breaks the text into chunks, generates vector embeddings, and stores them in PostgreSQL using the `pgvector` extension. This ensures file uploads return immediately to the user without hanging the web server."*
-
-### 4. Real-Time Streaming & AI Resilience
-*"For chat responses, we use **Server-Sent Events (SSE)** so tokens stream onto the user's screen in real time with zero buffering. In the `ai-service`, we implemented **model fallback**: if OpenAI returns a rate-limit error (HTTP 429), the service automatically retries the prompt with Google Gemini without the user ever noticing a failure."*
-
-### 5. Frontend & Security
-*"The frontend is built with **React, TypeScript, and Bootstrap 5 with SCSS**. We strictly banned Tailwind to keep our design tokens and CSS bundle clean. For security, we use **asymmetric RS256 JWT tokens** where Auth Service signs tokens with a private key, and the Gateway verifies them with a public key. Payment flows use **Razorpay strictly in Test Mode** with cryptographic HMAC webhook validation."*
+- **Backend CI (`.github/workflows/backend.yml`)**: Matrix build and test across all 9 independent services.
+- **Frontend CI (`.github/workflows/frontend.yml`)**: TypeScript check, ESLint, SCSS theme verification, bundle secret scan.
+- **Architecture Guardrails (`.github/workflows/rules.yml`)**: Enforces zero ZooKeeper, zero Tailwind, database isolation, RBAC (`USER`/`ADMIN`), and Razorpay Test Mode only.
